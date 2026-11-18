@@ -8,7 +8,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Game"] }],
   "vars": {
     // Opcional: Client ID do Google (xxxx.apps.googleusercontent.com) para ativar login com Google
-    "GOOGLE_CLIENT_ID": ""
+    "303178597878-nq05mnquef1m3mn1jau3opi6lovva8nv.apps.googleusercontent.com": ""
   },
   "observability": { "enabled": true }
 }
