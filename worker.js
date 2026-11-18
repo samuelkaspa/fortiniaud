@@ -315,6 +315,7 @@ function createGame(ctx, env) {
     "POST /api/mp/emote": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!EMOTE_IDS.includes(b.id)) return [400, { error: "Emote inválido" }];
+      { const cs = cmb[c]; if (cs && (cs.s !== "n" || cs.rev)) return [409, { error: "Indisponível agora" }]; } /* derrubado/revivendo/eliminado não faz emote */
       const l = live[c], now = Date.now(); if (now - l.lastEmote < 300) return [429, { error: "Calma!" }]; l.lastEmote = now;
       const p = parties[partyOf[c]]; if (p) p.members.forEach(m => { if (m !== c) emit(m, { t: "emote", code: c, id: b.id }); });
       return [200, { ok: true }];
@@ -330,7 +331,11 @@ function createGame(ctx, env) {
      ===================================================================== */
   const MAXHP = 200, DMG_BODY = 20, DMG_HEAD = 40, REACH = 2.4, HIT_GAP = 180, POS_TTL = 4000, RESPAWN_MS = 2500, MAX_SPEED = 200;
   const pos = {}, cmb = {}; let evN = 0;
-  const cbt = c => cmb[c] || (cmb[c] = { hp: MAXHP, seq: 0, last: 0, win: [], k: -1, dead: false, tm: 0, imm: 0 });
+  /* estados (só o servidor muda): n = normal · d = derrubado · r = derrubado sendo revivido · x = eliminando (animação) → volta a n
+     NORMAL → CAÍDO → REVIVENDO → NORMAL   ou   NORMAL → CAÍDO → ELIMINANDO → (reaparece) NORMAL */
+  const DOWN_HP = 200, DOWN_DPS = 10 /* 5% da vida máx. por segundo */, REV_MS = 5000, REV_R = 2.2, REV_SLACK = 1, REV_HP = Math.round(MAXHP * 0.3), ELIM_MS = 4500;
+  const cbt = c => cmb[c] || (cmb[c] = { hp: MAXHP, seq: 0, last: 0, win: [], k: -1, tm: 0, imm: 0, s: "n", dh: 0, dt0: 0, rb: null, rev: null, rx: 0, rz: 0, vt: 0, rt: 0, dr: 0 });
+  const curDH = (v, now) => v.s === "d" ? v.dh - DOWN_DPS * (now - v.dt0) / 1000 : v.dh; /* vida de derrubado: só sangra no estado d (revivendo pausa) */
   const LOB_MS = 20000, LOB_SOLO_MS = 3000; /* lobby antes da partida: 20 s com o grupo (3 s sozinho) */
   /* lobby: acaba quando o tempo vence; todos os que estão nele recebem 'go' com a mesma rota do avião e deixam de ser imortais */
   function lobbyGo(pid) {
@@ -343,24 +348,64 @@ function createGame(ctx, env) {
   }
   const numIn = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) && v >= lo && v <= hi ? v : null; };
   const toParty = (c, msg) => { const p = parties[partyOf[c]]; (p ? p.members : [c]).forEach(m => emit(m, msg)); };
+  /* sangramento: agenda o instante exato em que a vida de derrubado chega a zero */
+  function bleedSched(m) {
+    const v = cbt(m); clearTimeout(v.tm); if (v.s !== "d") return;
+    const left = Math.max(0, curDH(v, Date.now()));
+    v.tm = setTimeout(() => { const w = cbt(m); if (w.s !== "d") return; if (curDH(w, Date.now()) <= 1) elim(m); else bleedSched(m); }, Math.ceil(left / DOWN_DPS * 1000) + 15);
+  }
+  /* para uma tentativa de reviver (quem revive = c): volta o alvo para derrubado e avisa o grupo */
+  function revStop(c, why) {
+    const a = cbt(c), t = a.rev; if (!t) return; a.rev = null;
+    const v = cbt(t); clearTimeout(v.vt);
+    if (v.s === "r" && v.rb === c) { v.s = "d"; v.rb = null; v.dt0 = Date.now(); bleedSched(t); }
+    toParty(c, { t: "rv", by: c, v: t, on: 0, why });
+  }
+  function revDone(c, t) {
+    const a = cbt(c), v = cbt(t), now = Date.now(), A = pos[c], V = pos[t];
+    if (a.rev !== t || v.s !== "r" || v.rb !== c || a.s !== "n") return revStop(c, "cancel");
+    if (!A || !V || Math.hypot(A.x - V.x, A.z - V.z) > REV_R + REV_SLACK) return revStop(c, "far");
+    clearTimeout(v.vt); a.rev = null; v.rb = null; v.s = "n"; v.hp = REV_HP; v.dh = 0; v.dt0 = 0;
+    toParty(c, { t: "rv", by: c, v: t, on: 0, why: "done" });
+    toParty(t, { t: "st", code: t, st: "n", hp: REV_HP, dh: 0, by: c });
+  }
+  /* eliminação: acontece UMA vez (se já está em x, ignora); depois da animação o jogador reaparece com vida cheia (modo treino) */
+  function elim(m) {
+    const v = cbt(m); if (v.s === "x") return;
+    if (v.rb) revStop(v.rb, "elim");
+    if (v.rev) revStop(m, "elim");
+    clearTimeout(v.tm); clearTimeout(v.vt); clearTimeout(v.rt);
+    v.s = "x"; v.hp = 0; v.dh = 0; v.dr = 0; const V = pos[m] || { x: 0, y: 0, z: 0, r: 0 };
+    toParty(m, { t: "st", code: m, st: "x", hp: 0, dh: 0, x: V.x, y: V.y, z: V.z, r: V.r });
+    v.rt = setTimeout(() => { v.s = "n"; v.hp = MAXHP; v.dh = 0; v.dr = 0; toParty(m, { t: "st", code: m, st: "n", hp: MAXHP, dh: 0, resp: 1 }); }, ELIM_MS);
+  }
+  const drops = {}; let dropN = 0;
   const combatRoutes = {
     /* posição/estado (10 Hz do cliente): guarda no servidor para validar golpes e repassa aos outros do grupo */
     "POST /api/mp/pos": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       const p = parties[partyOf[c]]; if (!p) return [200, { ok: true }];
-      const x = numIn(b.x, -600, 600), y = numIn(b.y, -50, 2000), z = numIn(b.z, -600, 600), r = numIn(b.r, -20, 20), s = numIn(b.s, 0, 200), f = numIn(b.f, 0, 127);
+      const x = numIn(b.x, -600, 600), y = numIn(b.y, -50, 2000), z = numIn(b.z, -600, 600), r = numIn(b.r, -20, 20), s = numIn(b.s, 0, 200), f = numIn(b.f, 0, 255);
       if (x === null || y === null || z === null || r === null || s === null || f === null) return [400, { error: "Posição inválida" }];
-      const now = Date.now(), o = pos[c];
-      if (o && now - o.t < POS_TTL && Math.hypot(x - o.x, z - o.z) / Math.max(0.05, (now - o.t) / 1000) > MAX_SPEED) return [200, { ok: true, rej: 1 }]; /* teletransporte */
+      const now = Date.now(), o = pos[c], a = cbt(c);
+      if (o && now - o.t < POS_TTL) {
+        const sp = Math.hypot(x - o.x, z - o.z) / Math.max(0.05, (now - o.t) / 1000);
+        if (sp > MAX_SPEED || ((a.s === "d" || a.s === "r") && sp > 5) || (a.s === "x" && sp > 2)) return [200, { ok: true, rej: 1, hp: a.hp, st: a.s, dh: Math.round(curDH(a, now)) }]; /* teletransporte / derrubado correndo */
+      }
       pos[c] = { x, y, z, r, f: f | 0, t: now };
-      const hp = cbt(c).hp, fi = f | 0;
-      p.members.forEach(m => { if (m !== c) emit(m, { t: "pos", code: c, x, y, z, r, s, f: fi, hp }); });
-      return [200, { ok: true, hp }];
+      if (a.rev) { /* quem está reviving precisa ficar parado e perto */
+        const V = pos[a.rev];
+        if (Math.hypot(x - a.rx, z - a.rz) > 0.9 || !V || Math.hypot(x - V.x, z - V.z) > REV_R + REV_SLACK) revStop(c, "move");
+      }
+      const hp = a.hp, fi = f | 0, st = a.s, dh = Math.round(Math.max(0, curDH(a, now)));
+      p.members.forEach(m => { if (m !== c) emit(m, { t: "pos", code: c, x, y, z, r, s, f: fi, hp, st, dh, rv: a.rev ? 1 : 0 }); });
+      return [200, { ok: true, hp, st, dh }];
     },
     /* entrou no treino (vida cheia, contador de golpes zerado) ou saiu (off) */
     "POST /api/mp/spawn": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const a = cbt(c); clearTimeout(a.tm); a.hp = MAXHP; a.seq = 0; a.last = 0; a.win = []; a.dead = false; a.k = -1; a.imm = 0; delete pos[c];
+      const a = cbt(c); if (a.rev) revStop(c, "leave"); if (a.rb) revStop(a.rb, "leave");
+      clearTimeout(a.tm); clearTimeout(a.vt); clearTimeout(a.rt); a.hp = MAXHP; a.seq = 0; a.last = 0; a.win = []; a.s = "n"; a.dh = 0; a.dr = 0; a.rb = null; a.rev = null; a.k = -1; a.imm = 0; delete pos[c];
       const pid = partyOf[c], p = parties[pid], now = Date.now();
       if (!b.lobby) { lobbyLeave(c, pid); toParty(c, { t: "hp", code: c, hp: MAXHP }); return [200, { ok: true, hp: MAXHP }]; } /* saiu do treino */
       /* entrou no treino: vai para o lobby pequeno, imortal, até a partida começar */
@@ -379,9 +424,9 @@ function createGame(ctx, env) {
       const a = cbt(c), now = Date.now();
       if (q <= a.seq) return [200, { ok: true, dup: 1 }]; /* golpe repetido/reenviado: ignora */
       a.seq = q;
-      if (a.dead) return [200, { ok: true }];
+      if (a.s !== "n" || a.rev) return [200, { ok: true }]; /* derrubado, revivendo ou eliminado não ataca */
       a.win = a.win.filter(t => now - t < 1400);
-      if (now - a.last < HIT_GAP || a.win.length >= 4) return [429, { error: "Calma!" }]; /* mais rápido que a animação permite */
+      if (now - a.last < HIT_GAP || a.win.length >= 5) return [429, { error: "Calma!" }]; /* mais rápido que a animação permite */
       a.last = now; a.win.push(now);
       const p = parties[partyOf[c]], A = pos[c];
       if (!p || !A || now - A.t > POS_TTL) return [200, { ok: true, miss: 1 }];
@@ -390,29 +435,71 @@ function createGame(ctx, env) {
       let best = null;
       for (const m of p.members) {
         if (m === c) continue;
-        const V = pos[m], vb = cbt(m); if (!V || now - V.t > POS_TTL || vb.dead || vb.hp <= 0 || now < vb.imm) continue; /* imortal no lobby */
+        const V = pos[m], vb = cbt(m); if (!V || now - V.t > POS_TTL || vb.s === "x" || (vb.s === "n" && vb.hp <= 0) || now < vb.imm) continue; /* imortal no lobby */
         const dx = V.x - A.x, dz = V.z - A.z, d = Math.hypot(dx, dz);
         if (d > REACH || Math.abs(V.y - A.y) > 2.2) continue;
         const cs = d < 0.6 ? 1 : (dx * fx + dz * fz) / d; if (cs < 0.5) continue; /* cone de ±60° à frente */
         const score = d * (2 - cs); if (!best || score < best.score) best = { m, d, dx, dz, V, score };
       }
       if (!best) return [200, { ok: true, miss: 1 }];
-      /* região: a altura da mira no alvo decide. Cabeça tem área própria (esfera em y≈1.78, raio ≈.22 + folga) */
+      /* região: a altura da mira no alvo decide. Cabeça tem área própria (esfera em y≈1.78, raio ≈.22 + folga). Derrubado: só corpo */
+      const vb = cbt(best.m), vm = best.m, down = vb.s === "d" || vb.s === "r";
       const sA = A.f & 2 ? 0.75 : 1, sV = best.V.f & 2 ? 0.75 : 1;
       const yAim = (A.y + sA) + Math.tan(elev) * Math.max(best.d, 1.6) - best.V.y;
       const headC = 1.78 * sV, headR = 0.4 * sV;
-      if (yAim > headC + headR) return [200, { ok: true, miss: 1 }]; /* passou por cima da cabeça */
-      const head = Math.abs(yAim - headC) <= headR, dmg = head ? DMG_HEAD : DMG_BODY, vb = cbt(best.m);
-      vb.hp = Math.max(0, vb.hp - dmg);
+      if (down ? yAim > 1.4 : yAim > headC + headR) return [200, { ok: true, miss: 1 }]; /* passou por cima */
+      const head = !down && Math.abs(yAim - headC) <= headR, dmg = head ? DMG_HEAD : DMG_BODY;
+      if (vb.rev) revStop(vm, "dmg"); /* quem estava reviving levou dano: cancela */
+      let st;
+      if (down) { /* dano extra em derrubado: tira da vida de derrubado (a revivida em andamento continua, mas o sangramento já estava pausado) */
+        vb.dh = Math.max(0, curDH(vb, now) - dmg); vb.dt0 = now; st = vb.dh <= 0 ? "x" : vb.s;
+        if (vb.s === "d") bleedSched(vm);
+      } else {
+        vb.hp = Math.max(0, vb.hp - dmg);
+        if (vb.hp <= 0) { vb.s = "d"; vb.dh = DOWN_HP; vb.dt0 = now; st = "d"; bleedSched(vm); } else st = "n"; /* vida normal zerou: derrubado, nunca eliminado direto */
+      }
       let k = Math.floor(Math.random() * 3); if (k === vb.k) k = (k + 1 + Math.floor(Math.random() * 2)) % 3; vb.k = k; /* nunca repete a variação anterior */
       const n = Math.hypot(best.dx, best.dz) || 1;
-      const ev = { t: "hit", e: ++evN, a: c, v: best.m, d: dmg, h: head ? 1 : 0, hp: vb.hp, k, x: +(best.dx / n).toFixed(3), z: +(best.dz / n).toFixed(3) };
+      const ev = { t: "hit", e: ++evN, a: c, v: vm, d: dmg, h: head ? 1 : 0, hp: vb.hp, st, dh: Math.round(Math.max(0, st === "x" ? 0 : curDH(vb, now))), k, x: +(best.dx / n).toFixed(3), z: +(best.dz / n).toFixed(3) };
       p.members.forEach(m => emit(m, ev));
-      if (vb.hp <= 0) {
-        vb.dead = true; const vm = best.m;
-        vb.tm = setTimeout(() => { vb.hp = MAXHP; vb.dead = false; toParty(vm, { t: "hp", code: vm, hp: MAXHP }); }, RESPAWN_MS);
-      }
+      if (st === "x") elim(vm);
       return [200, { ok: true, hit: 1, d: dmg, h: head ? 1 : 0 }];
+    },
+    /* reviver um companheiro derrubado do mesmo grupo: {t: código} começa · {off: 1} cancela. Só um por vez; o servidor termina em REV_MS se nada cancelar */
+    "POST /api/mp/revive": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const a = cbt(c), now = Date.now(), p = parties[partyOf[c]];
+      if (b.off) { revStop(c, "cancel"); return [200, { ok: true }]; }
+      const t = typeof b.t === "string" ? b.t : "";
+      if (!p || t === c || !p.members.includes(t)) return [400, { error: "Alvo inválido" }];
+      const v = cbt(t), A = pos[c], V = pos[t];
+      if (a.s !== "n" || a.rev) return [409, { error: "Você não pode reviver agora" }];
+      if (v.s === "r") return [409, { error: "Outro jogador já está revivendo" }]; /* nunca dois ao mesmo tempo */
+      if (v.s !== "d") return [409, { error: "O jogador não está derrubado" }];
+      if (!A || !V || now - A.t > POS_TTL || now - V.t > POS_TTL || Math.hypot(A.x - V.x, A.z - V.z) > REV_R + REV_SLACK || Math.abs(A.y - V.y) > 2.2) return [409, { error: "Chegue mais perto" }];
+      v.dh = Math.max(1, curDH(v, now)); v.s = "r"; v.rb = c; clearTimeout(v.tm); /* sangramento pausa enquanto revive */
+      a.rev = t; a.rx = A.x; a.rz = A.z; a.win = [];
+      clearTimeout(v.vt); v.vt = setTimeout(() => revDone(c, t), REV_MS);
+      p.members.forEach(m => emit(m, { t: "rv", by: c, v: t, on: 1, ms: REV_MS }));
+      return [200, { ok: true, ms: REV_MS }];
+    },
+    /* quem acabou de ser eliminado deixa os itens (fora a picareta) no local onde caiu; o servidor guarda e avisa o grupo */
+    "POST /api/mp/drop": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const a = cbt(c), V = pos[c]; if (a.s !== "x" || a.dr || !V || !Array.isArray(b.items)) return [200, { ok: true }];
+      const items = b.items.slice(0, 5).filter(i => i && typeof i.id === "string" && /^[a-z0-9_]{1,16}$/.test(i.id)).map(i => ({ id: i.id, n: String(i.n || i.id).slice(0, 24) }));
+      a.dr = 1; if (!items.length) return [200, { ok: true }];
+      const d = { id: ++dropN, x: V.x, y: V.y, z: V.z, items, pid: partyOf[c] }; drops[d.id] = d;
+      setTimeout(() => { delete drops[d.id]; }, 5 * 60e3);
+      toParty(c, { t: "drop", id: d.id, x: d.x, y: d.y, z: d.z, items });
+      return [200, { ok: true }];
+    },
+    "POST /api/mp/pickup": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const d = drops[b.id | 0], A = pos[c], a = cbt(c);
+      if (!d || !A || a.s !== "n" || d.pid !== partyOf[c] || Math.hypot(A.x - d.x, A.z - d.z) > 3 || Math.abs(A.y - d.y) > 3) return [200, { ok: true, none: 1 }];
+      delete drops[d.id]; toParty(c, { t: "pick", id: d.id, by: c, items: d.items });
+      return [200, { ok: true }];
     }
   };
   Object.assign(routes, combatRoutes);
