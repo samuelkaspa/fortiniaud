@@ -376,6 +376,24 @@ export class Game extends DurableObject {
   fetch(request) { return this.app.handle(request); }
 }
 
+/* Páginas públicas exigidas pelo Google (política de privacidade e termos) */
+const CONTACT = ""; /* opcional: coloque seu e-mail entre as aspas para aparecer nas páginas */
+const page = (title, body) => new Response(
+  `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Fortiniaud</title>
+<style>body{font-family:system-ui,sans-serif;max-width:680px;margin:0 auto;padding:20px;line-height:1.6;color:#222;background:#fff}h1{font-size:26px}h2{font-size:18px;margin-top:26px}a{color:#3b1a8f}@media(prefers-color-scheme:dark){body{background:#14121f;color:#eee}a{color:#ffd23f}}</style></head><body><h1>${title}</h1>${body}<p><small>Última atualização: 18/11/2026</small></p></body></html>`,
+  { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
+const contactLine = CONTACT ? `Fale com o responsável pelo jogo em <a href="mailto:${CONTACT}">${CONTACT}</a>.` : "Fale com o responsável pelo jogo, pelos canais em que você recebeu o link.";
+const PRIVACY = `<p>O Fortiniaud é um jogo online. Esta página explica quais dados ele usa e por quê.</p>
+<h2>Dados que guardamos</h2><ul><li>Nome de jogador e código de amigo.</li><li>Senha da conta virtual, guardada de forma criptografada (nunca em texto).</li><li>E-mail do Google, se você informar (para recuperar a senha) ou entrar com o Google. Do Google usamos só o e-mail e o identificador da conta.</li><li>Progresso do jogo: nível, itens, V-Bucks, configurações.</li><li>Lista de amigos, pedidos de amizade e grupos.</li></ul>
+<h2>Para que usamos</h2><p>Somente para o jogo funcionar: entrar na conta, salvar seu progresso, mostrar amigos e grupos e recuperar a senha. Não vendemos seus dados e não os usamos para anúncios.</p>
+<h2>Com quem compartilhamos</h2><p>Com ninguém, além dos serviços que fazem o jogo funcionar: o Google (para o login) e a Cloudflare (hospedagem e armazenamento).</p>
+<h2>Seus direitos</h2><p>Você pode pedir a exclusão da sua conta e dos seus dados a qualquer momento. ${contactLine}</p>`;
+const TERMS = `<p>Ao jogar o Fortiniaud você concorda com estas regras simples.</p>
+<h2>Uso do jogo</h2><ul><li>Seja respeitoso com os outros jogadores. Nomes ofensivos podem ser removidos.</li><li>Não tente burlar, invadir ou atrapalhar o jogo.</li><li>Você é responsável por manter sua senha em segurança.</li></ul>
+<h2>Itens e V-Bucks</h2><p>V-Bucks e itens são virtuais, só valem dentro do jogo e não têm valor em dinheiro.</p>
+<h2>Disponibilidade</h2><p>O jogo é oferecido como está, pode mudar ou ficar fora do ar, e o progresso pode ser apagado em caso de problema técnico ou violação das regras.</p>
+<h2>Contato</h2><p>${contactLine}</p>`;
+
 /* /api/* vai para o Durable Object (contas, saves, multiplayer); o resto devolve o jogo (index.html). */
 export default {
   fetch(request, env) {
@@ -383,6 +401,8 @@ export default {
     if (p.startsWith("/api/")) return env.GAME.get(env.GAME.idFromName("main")).fetch(request);
     if (p === "/" || p === "/index.html" || p === "/fortiniaud.html")
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
+    if (p === "/privacidade") return page("Política de Privacidade", PRIVACY);
+    if (p === "/termos") return page("Termos de Serviço", TERMS);
     return new Response("Not found", { status: 404 });
   }
 };
