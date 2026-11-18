@@ -1346,7 +1346,7 @@ document.addEventListener("click",e=>{ if(!e.target.closest("#modes")) $("#modeL
 let pt;
 $("#play").onclick=()=>{
   $("#mPlay").hidden=false; const t=$("#playTxt"), bar=$("#playBar"); t.textContent="Procurando partida · "+curG().n+(curG().id==="1v1"?"":" · "+curMode().n); let p=0;
-  clearInterval(pt); pt=setInterval(()=>{ p+=4; bar.style.width=p+"%"; if(p>=100){ clearInterval(pt); t.textContent="Partida encontrada! 🎮"; addXP(150); } },120);
+  clearInterval(pt); pt=setInterval(()=>{ p+=4; bar.style.width=p+"%"; if(p>=100){ clearInterval(pt); t.textContent="Partida encontrada! 🎮"; } },120);
 };
 $("#cancelPlay").onclick=()=>{ clearInterval(pt); $("#mPlay").hidden=true; };
 $("#sTabs").onclick=e=>{ const k=e.target.dataset.st; if(!k) return;
