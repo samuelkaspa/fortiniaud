@@ -40,7 +40,7 @@ function createGame(ctx, env) {
   const storage = ctx.storage;
 
   /* ---------- Banco: cada conta numa chave "a:<id>", o resto em chaves por seção ---------- */
-  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {}, admins: {} };
+  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {}, admins: {}, verified: {} };
   const dirty = new Set();
   const P = (...keys) => keys.forEach(k => dirty.add(k));
   async function flush() {
@@ -368,8 +368,41 @@ function createGame(ctx, env) {
     "POST /api/admin/players": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      const players = Object.keys(live).filter(isOnline).map(k => ({ code: k, name: nameOf(k), lvl: lvlOf(k), adm: isAdm(k), me: k === c }));
-      return [200, { players }];
+      const players = Object.keys(live).filter(isOnline).map(k => ({ code: k, name: nameOf(k), lvl: lvlOf(k), adm: isAdm(k), ver: !!db.verified[k], me: k === c }));
+      return [200, { players, owner: !!admSess[c].owner }];
+    },
+    /* ações abaixo: só o dono (quem entrou com o código de acesso) */
+    "POST /api/admin/revoke": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
+      const t = b.code;
+      if (!codeOk(t) || !isAdm(t)) return [404, { error: "Esse jogador não é ADM" }];
+      delete db.admins[t]; delete admSess[t]; delete admPend[t]; P("admins");
+      emit(t, { t: "adm", on: false }); emit(t, { t: "toast", msg: "Sua tag ADM foi removida" });
+      const p = parties[partyOf[t]]; if (p) pushParty(p);
+      return [200, { ok: true, name: nameOf(t) }];
+    },
+    "POST /api/admin/verify": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
+      const t = b.code;
+      if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
+      const on = !!b.on; if (on) db.verified[t] = 1; else delete db.verified[t]; P("verified");
+      emit(t, { t: "ver", on });
+      return [200, { ok: true, name: nameOf(t), on }];
+    },
+    "POST /api/admin/gift": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
+      const t = b.code, n = Math.floor(Number(b.amount)), kind = b.kind;
+      if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
+      if (!["vb", "xp", "pxp"].includes(kind)) return [400, { error: "Tipo inválido" }];
+      if (!(n >= 1 && n <= 1e6)) return [400, { error: "Quantidade de 1 a 1.000.000" }];
+      emit(t, { t: "gift", kind, n });
+      return [200, { ok: true, name: nameOf(t) }];
     },
     "POST /api/admin/grant": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
@@ -395,7 +428,7 @@ function createGame(ctx, env) {
         s.res = { write: d => ctrl.enqueue(enc.encode(d)) };
         l.sids.add(sid);
         s.res.write("retry: 4000\n\n");
-        emit(c, { t: "init", adm: isAdm(c), me: { code: c, name: nameOf(c) }, friends: friendList(c), reqs: reqList(c), party: partyView(c) });
+        emit(c, { t: "init", adm: isAdm(c), ver: !!db.verified[c], me: { code: c, name: nameOf(c) }, friends: friendList(c), reqs: reqList(c), party: partyView(c) });
         presence(c); const pp = parties[partyOf[c]]; if (pp) pushParty(pp);
         ping = setInterval(() => { try { s.res.write(": ping\n\n"); } catch (e) {} }, 20000);
       },
