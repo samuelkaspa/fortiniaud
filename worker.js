@@ -221,7 +221,7 @@ function createGame(ctx, env) {
   const presence = c => (db.friends[c] || []).forEach(pushFriends);
 
   function leaveParty(c) {
-    const pid = partyOf[c], p = parties[pid]; if (!p) return; delete partyOf[c];
+    const pid = partyOf[c], p = parties[pid]; if (!p) return; lobbyLeave(c, pid); cbt(c).imm = 0; delete partyOf[c];
     p.members = p.members.filter(m => m !== c); emit(c, { t: "party", party: null });
     if (p.members.length <= 1) { p.members.forEach(m => { delete partyOf[m]; emit(m, { t: "party", party: null }); }); delete parties[pid]; }
     else pushParty(p);
@@ -323,6 +323,101 @@ function createGame(ctx, env) {
   Object.assign(routes, mproutes);
 
   /* =====================================================================
+     COMBATE (servidor manda): posição, vida, validação e dano da marreta
+     - o cliente só envia a mira (yaw/pitch) de cada golpe; quem acerta, onde acerta (corpo/cabeça),
+       quanto de dano e a vida resultante são decididos aqui, nunca pelo navegador
+     - dano: corpo 20, cabeça 40 · vida máx. 200 (treino: reaparece com vida cheia após alguns segundos)
+     ===================================================================== */
+  const MAXHP = 200, DMG_BODY = 20, DMG_HEAD = 40, REACH = 2.4, HIT_GAP = 180, POS_TTL = 4000, RESPAWN_MS = 2500, MAX_SPEED = 200;
+  const pos = {}, cmb = {}; let evN = 0;
+  const cbt = c => cmb[c] || (cmb[c] = { hp: MAXHP, seq: 0, last: 0, win: [], k: -1, dead: false, tm: 0, imm: 0 });
+  const LOB_MS = 20000, LOB_SOLO_MS = 3000; /* lobby antes da partida: 20 s com o grupo (3 s sozinho) */
+  /* lobby: acaba quando o tempo vence; todos os que estão nele recebem 'go' com a mesma rota do avião e deixam de ser imortais */
+  function lobbyGo(pid) {
+    const p = parties[pid]; if (!p || !p.lob || p.lob.started) return; const L = p.lob; L.started = true; clearTimeout(L.tm);
+    L.ins.forEach(m => { cbt(m).imm = 0; emit(m, { t: "go", a: L.a, off: L.off }); });
+  }
+  function lobbyLeave(c, pid) {
+    const p = parties[pid]; if (!p || !p.lob) return; p.lob.ins.delete(c);
+    if (!p.lob.ins.size) { clearTimeout(p.lob.tm); delete p.lob; } /* ninguém mais no treino: o próximo treino abre um lobby novo */
+  }
+  const numIn = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) && v >= lo && v <= hi ? v : null; };
+  const toParty = (c, msg) => { const p = parties[partyOf[c]]; (p ? p.members : [c]).forEach(m => emit(m, msg)); };
+  const combatRoutes = {
+    /* posição/estado (10 Hz do cliente): guarda no servidor para validar golpes e repassa aos outros do grupo */
+    "POST /api/mp/pos": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const p = parties[partyOf[c]]; if (!p) return [200, { ok: true }];
+      const x = numIn(b.x, -600, 600), y = numIn(b.y, -50, 2000), z = numIn(b.z, -600, 600), r = numIn(b.r, -20, 20), s = numIn(b.s, 0, 200), f = numIn(b.f, 0, 127);
+      if (x === null || y === null || z === null || r === null || s === null || f === null) return [400, { error: "Posição inválida" }];
+      const now = Date.now(), o = pos[c];
+      if (o && now - o.t < POS_TTL && Math.hypot(x - o.x, z - o.z) / Math.max(0.05, (now - o.t) / 1000) > MAX_SPEED) return [200, { ok: true, rej: 1 }]; /* teletransporte */
+      pos[c] = { x, y, z, r, f: f | 0, t: now };
+      const hp = cbt(c).hp, fi = f | 0;
+      p.members.forEach(m => { if (m !== c) emit(m, { t: "pos", code: c, x, y, z, r, s, f: fi, hp }); });
+      return [200, { ok: true, hp }];
+    },
+    /* entrou no treino (vida cheia, contador de golpes zerado) ou saiu (off) */
+    "POST /api/mp/spawn": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const a = cbt(c); clearTimeout(a.tm); a.hp = MAXHP; a.seq = 0; a.last = 0; a.win = []; a.dead = false; a.k = -1; a.imm = 0; delete pos[c];
+      const pid = partyOf[c], p = parties[pid], now = Date.now();
+      if (!b.lobby) { lobbyLeave(c, pid); toParty(c, { t: "hp", code: c, hp: MAXHP }); return [200, { ok: true, hp: MAXHP }]; } /* saiu do treino */
+      /* entrou no treino: vai para o lobby pequeno, imortal, até a partida começar */
+      if (!p || p.members.length < 2) return [200, { ok: true, hp: MAXHP, lob: { left: LOB_SOLO_MS } }];
+      if (!p.lob) { const L = p.lob = { end: now + LOB_MS, a: +(Math.random() * Math.PI * 2).toFixed(3), off: +((Math.random() - 0.5) * 300).toFixed(1), ins: new Set(), started: false, tm: 0 }; L.tm = setTimeout(() => lobbyGo(pid), LOB_MS); }
+      const L = p.lob;
+      if (L.started) return [200, { ok: true, hp: MAXHP, lob: { left: 0, a: L.a, off: L.off } }]; /* a partida já começou: entra direto no avião */
+      L.ins.add(c); a.imm = Infinity; toParty(c, { t: "hp", code: c, hp: MAXHP });
+      return [200, { ok: true, hp: MAXHP, lob: { left: Math.max(0, L.end - now), a: L.a, off: L.off } }];
+    },
+    /* um golpe da marreta chegou ao ponto de impacto: o servidor procura o alvo e aplica o dano */
+    "POST /api/mp/hit": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const q = b.q, yaw = numIn(b.yaw, -1e4, 1e4), pitch = numIn(b.pitch, -3, 3);
+      if (!Number.isInteger(q) || q < 1 || yaw === null || pitch === null) return [400, { error: "Golpe inválido" }];
+      const a = cbt(c), now = Date.now();
+      if (q <= a.seq) return [200, { ok: true, dup: 1 }]; /* golpe repetido/reenviado: ignora */
+      a.seq = q;
+      if (a.dead) return [200, { ok: true }];
+      a.win = a.win.filter(t => now - t < 1400);
+      if (now - a.last < HIT_GAP || a.win.length >= 4) return [429, { error: "Calma!" }]; /* mais rápido que a animação permite */
+      a.last = now; a.win.push(now);
+      const p = parties[partyOf[c]], A = pos[c];
+      if (!p || !A || now - A.t > POS_TTL) return [200, { ok: true, miss: 1 }];
+      /* direção da mira: a câmera olha para -(sen yaw, cos yaw); o pitch .28 (padrão) mira reto, pitch menor mira para cima */
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw), elev = 0.28 - pitch;
+      let best = null;
+      for (const m of p.members) {
+        if (m === c) continue;
+        const V = pos[m], vb = cbt(m); if (!V || now - V.t > POS_TTL || vb.dead || vb.hp <= 0 || now < vb.imm) continue; /* imortal no lobby */
+        const dx = V.x - A.x, dz = V.z - A.z, d = Math.hypot(dx, dz);
+        if (d > REACH || Math.abs(V.y - A.y) > 2.2) continue;
+        const cs = d < 0.6 ? 1 : (dx * fx + dz * fz) / d; if (cs < 0.5) continue; /* cone de ±60° à frente */
+        const score = d * (2 - cs); if (!best || score < best.score) best = { m, d, dx, dz, V, score };
+      }
+      if (!best) return [200, { ok: true, miss: 1 }];
+      /* região: a altura da mira no alvo decide. Cabeça tem área própria (esfera em y≈1.78, raio ≈.22 + folga) */
+      const sA = A.f & 2 ? 0.75 : 1, sV = best.V.f & 2 ? 0.75 : 1;
+      const yAim = (A.y + sA) + Math.tan(elev) * Math.max(best.d, 1.6) - best.V.y;
+      const headC = 1.78 * sV, headR = 0.4 * sV;
+      if (yAim > headC + headR) return [200, { ok: true, miss: 1 }]; /* passou por cima da cabeça */
+      const head = Math.abs(yAim - headC) <= headR, dmg = head ? DMG_HEAD : DMG_BODY, vb = cbt(best.m);
+      vb.hp = Math.max(0, vb.hp - dmg);
+      let k = Math.floor(Math.random() * 3); if (k === vb.k) k = (k + 1 + Math.floor(Math.random() * 2)) % 3; vb.k = k; /* nunca repete a variação anterior */
+      const n = Math.hypot(best.dx, best.dz) || 1;
+      const ev = { t: "hit", e: ++evN, a: c, v: best.m, d: dmg, h: head ? 1 : 0, hp: vb.hp, k, x: +(best.dx / n).toFixed(3), z: +(best.dz / n).toFixed(3) };
+      p.members.forEach(m => emit(m, ev));
+      if (vb.hp <= 0) {
+        vb.dead = true; const vm = best.m;
+        vb.tm = setTimeout(() => { vb.hp = MAXHP; vb.dead = false; toParty(vm, { t: "hp", code: vm, hp: MAXHP }); }, RESPAWN_MS);
+      }
+      return [200, { ok: true, hit: 1, d: dmg, h: head ? 1 : 0 }];
+    }
+  };
+  Object.assign(routes, combatRoutes);
+
+  /* =====================================================================
      ADMIN: acesso confirmado pelo servidor + concessão da tag/permissão ADM
      1) /start  recebe o código de acesso (ou um ADM já concedido) e gera um código aleatório de 5 caracteres
      2) /confirm confere o código digitado; só então o servidor libera a sessão de admin (30 min)
@@ -414,7 +509,7 @@ function createGame(ctx, env) {
       for (const k of Object.keys(db.friends)) if (db.friends[k].includes(t)) db.friends[k] = db.friends[k].filter(x => x !== t);
       for (const k of Object.keys(db.reqs)) if (db.reqs[k].includes(t)) { db.reqs[k] = db.reqs[k].filter(x => x !== t); hadReq.push(k); }
       delete db.profiles[t]; delete db.guests[t]; delete db.admins[t]; delete db.verified[t];
-      delete admSess[t]; delete admPend[t]; delete invites[t];
+      delete admSess[t]; delete admPend[t]; delete invites[t]; delete pos[t]; if (cmb[t]) { clearTimeout(cmb[t].tm); delete cmb[t]; }
       P("names", "friends", "reqs", "profiles", "guests", "admins", "verified");
       for (const sid of Object.keys(sids)) if (sids[sid].code === t) delete sids[sid];
       delete live[t];
@@ -463,6 +558,7 @@ function createGame(ctx, env) {
       },
       cancel() {
         clearInterval(ping); l.sids.delete(sid); delete sids[sid]; s.res = null; if (l.sids.size) return;
+        delete pos[c];
         presence(c); const p = parties[partyOf[c]]; if (p) pushParty(p);
         setTimeout(() => { if (!isOnline(c)) leaveParty(c); }, 15000);
       }
