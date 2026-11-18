@@ -11,6 +11,9 @@ const hash = async (pw, salt) => {
   const k = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveBits"]);
   return hex(new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(salt), iterations: 100000 }, k, 512)));
 };
+/* mesmo hash do código secreto que antes ficava no navegador (agora só o servidor confere) */
+const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
+const ADM_HASH = 2543653124716815;
 const eq = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
 
 /* ---------- Regras ---------- */
@@ -37,7 +40,7 @@ function createGame(ctx, env) {
   const storage = ctx.storage;
 
   /* ---------- Banco: cada conta numa chave "a:<id>", o resto em chaves por seção ---------- */
-  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {} };
+  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {}, admins: {} };
   const dirty = new Set();
   const P = (...keys) => keys.forEach(k => dirty.add(k));
   async function flush() {
@@ -74,18 +77,23 @@ function createGame(ctx, env) {
   function fail(k) { const f = fails[k] || (fails[k] = { n: 0, t: 0 }); if (Date.now() - f.t > 60000) f.n = 0; f.n++; f.t = Date.now(); }
 
   /* ---------- Google (valida o token no servidor) ---------- */
+  const gid = () => String(env.GOOGLE_CLIENT_ID || "").trim();
   async function googleVerify(credential) {
-    if (!env.GOOGLE_CLIENT_ID) throw new Error("noconfig");
+    if (!gid()) throw new Error("noconfig");
+    if (typeof credential !== "string" || credential.length < 20) throw new Error("invalid");
     let r; try { r = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(credential)); } catch (e) { throw new Error("net"); }
     let j; try { j = await r.json(); } catch (e) { throw new Error("invalid"); }
-    if (!r.ok || j.aud !== env.GOOGLE_CLIENT_ID || String(j.email_verified) !== "true") throw new Error("invalid");
+    if (!r.ok || j.aud !== gid() || String(j.email_verified) !== "true" || !j.sub || !j.email) throw new Error("invalid");
+    if (j.iss !== "accounts.google.com" && j.iss !== "https://accounts.google.com") throw new Error("invalid");
     return { sub: j.sub, email: low(j.email) };
   }
-  const gErr = e => [e.message === "noconfig" ? 503 : 401, { error: e.message === "noconfig" ? "Login com Google ainda não foi configurado no servidor" : "Não foi possível validar o Google" }];
+  const gErr = e => e.message === "noconfig" ? [503, { error: "Login com Google ainda não foi configurado no servidor" }]
+    : e.message === "net" ? [503, { error: "Não foi possível falar com o Google agora. Tente de novo." }]
+    : [401, { error: "Não foi possível validar o Google" }];
 
   /* ---------- Rotas de conta ---------- */
   const routes = {
-    "GET /api/config": async () => [200, { googleClientId: env.GOOGLE_CLIENT_ID || "" }],
+    "GET /api/config": async () => [200, { googleClientId: gid() }],
 
     "POST /api/name": async b => {
       if (!codeOk(b.code) || nameErr(b.name)) return [400, { error: "Nome inválido" }];
@@ -177,6 +185,7 @@ function createGame(ctx, env) {
   const live = {}, sids = {}, parties = {}, partyOf = {}, invites = {};
   const cleanName = n => (typeof n === "string" && !nameErr(n) ? n : "Jogador");
   const isOnline = c => !!(live[c] && live[c].sids.size);
+  const isAdm = c => !!db.admins[c];
 
   async function identify(b) {
     if (!b) return null;
@@ -206,7 +215,7 @@ function createGame(ctx, env) {
   const pushReqs = c => { if (isOnline(c)) emit(c, { t: "reqs", reqs: reqList(c) }); };
   const partyView = c => {
     const p = parties[partyOf[c]]; if (!p) return null;
-    return { id: p.id, leader: p.members[0], members: p.members.map(m => ({ code: m, name: nameOf(m), lvl: lvlOf(m), online: isOnline(m), app: (live[m] && live[m].app) || null })) };
+    return { id: p.id, leader: p.members[0], members: p.members.map(m => ({ code: m, name: nameOf(m), lvl: lvlOf(m), online: isOnline(m), adm: isAdm(m), app: (live[m] && live[m].app) || null })) };
   };
   const pushParty = p => p.members.forEach(m => emit(m, { t: "party", party: partyView(m) }));
   const presence = c => (db.friends[c] || []).forEach(pushFriends);
@@ -239,7 +248,7 @@ function createGame(ctx, env) {
       (db.profiles[id.code] = db.profiles[id.code] || {}).name = (db.profiles[id.code].name || l.name); P("profiles");
       const sid = rnd(16); sids[sid] = { code: id.code, res: null, at: Date.now() };
       setTimeout(() => { if (sids[sid] && !sids[sid].res) delete sids[sid]; }, 30000);
-      return [200, { sid, me: { code: id.code, name: nameOf(id.code) } }];
+      return [200, { sid, me: { code: id.code, name: nameOf(id.code), adm: isAdm(id.code) } }];
     },
     "POST /api/mp/state": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
@@ -313,6 +322,69 @@ function createGame(ctx, env) {
   };
   Object.assign(routes, mproutes);
 
+  /* =====================================================================
+     ADMIN: acesso confirmado pelo servidor + concessão da tag/permissão ADM
+     1) /start  recebe o código de acesso (ou um ADM já concedido) e gera um código aleatório de 5 caracteres
+     2) /confirm confere o código digitado; só então o servidor libera a sessão de admin (30 min)
+     3) /players e /grant exigem essa sessão; jogador comum nunca passa
+     ===================================================================== */
+  const admSess = {}, admPend = {}, ADM_TTL = 30 * 60e3, CH_TTL = 2 * 60e3, CH_TRIES = 3;
+  const admOk = c => { const s = admSess[c]; if (s && s.exp <= Date.now()) { delete admSess[c]; return false; } return !!s; };
+  function chalCode() {
+    const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; /* letras e números, sem os que confundem (0/O, 1/I) */
+    for (;;) {
+      const c = [...crypto.getRandomValues(new Uint8Array(5))].map(x => A[x % 32]).join("");
+      if (/[A-Z]/.test(c) && /[2-9]/.test(c)) return c; /* sempre tem letra e número */
+    }
+  }
+  const adminRoutes = {
+    "POST /api/admin/start": async (b, req) => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const k = "adm|" + (req.headers.get("CF-Connecting-IP") || "") + "|" + c;
+      if (locked(k)) return [429, { error: "Muitas tentativas. Espere 1 minuto." }];
+      const raw = typeof b.code === "string" ? b.code.trim().toLowerCase() : "";
+      let owner = false;
+      if (raw) { if (raw.length > 64 || cyrb53(raw) !== ADM_HASH) { fail(k); return [403, { error: "Acesso negado" }]; } owner = true; }
+      else if (!isAdm(c)) { fail(k); return [403, { error: "Acesso negado" }]; } /* sem código: só quem já recebeu ADM */
+      delete fails[k];
+      delete admSess[c];
+      const val = chalCode();
+      admPend[c] = { val, exp: Date.now() + CH_TTL, tries: 0, sid: b.sid, owner };
+      return [200, { challenge: val, ttl: CH_TTL / 1000 }];
+    },
+    "POST /api/admin/confirm": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const p = admPend[c];
+      if (!p || p.sid !== b.sid || Date.now() > p.exp) { delete admPend[c]; return [410, { error: "Código expirado. Comece de novo.", reset: true }]; }
+      const v = typeof b.code === "string" ? b.code.trim().toUpperCase() : "";
+      if (!eq(v, p.val)) {
+        if (++p.tries >= CH_TRIES) { delete admPend[c]; return [403, { error: "Código incorreto. Comece de novo.", reset: true }]; }
+        return [403, { error: "Código incorreto" }];
+      }
+      delete admPend[c];
+      admSess[c] = { exp: Date.now() + ADM_TTL, owner: p.owner };
+      return [200, { ok: true, owner: p.owner, adm: isAdm(c) }];
+    },
+    "POST /api/admin/players": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      const players = Object.keys(live).filter(isOnline).map(k => ({ code: k, name: nameOf(k), lvl: lvlOf(k), adm: isAdm(k), me: k === c }));
+      return [200, { players }];
+    },
+    "POST /api/admin/grant": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      const t = b.code;
+      if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
+      if (isAdm(t)) return [409, { error: "Esse jogador já é ADM" }];
+      db.admins[t] = { at: Date.now(), by: c }; P("admins");
+      emit(t, { t: "adm", on: true }); emit(t, { t: "toast", msg: "Você recebeu a tag ADM" });
+      const p = parties[partyOf[t]]; if (p) pushParty(p);
+      return [200, { ok: true, name: nameOf(t) }];
+    }
+  };
+  Object.assign(routes, adminRoutes);
+
   /* stream de eventos em tempo real (SSE) */
   function openStream(u) {
     const sid = u.searchParams.get("sid"), s = sids[sid];
@@ -323,7 +395,7 @@ function createGame(ctx, env) {
         s.res = { write: d => ctrl.enqueue(enc.encode(d)) };
         l.sids.add(sid);
         s.res.write("retry: 4000\n\n");
-        emit(c, { t: "init", me: { code: c, name: nameOf(c) }, friends: friendList(c), reqs: reqList(c), party: partyView(c) });
+        emit(c, { t: "init", adm: isAdm(c), me: { code: c, name: nameOf(c) }, friends: friendList(c), reqs: reqList(c), party: partyView(c) });
         presence(c); const pp = parties[partyOf[c]]; if (pp) pushParty(pp);
         ping = setInterval(() => { try { s.res.write(": ping\n\n"); } catch (e) {} }, 20000);
       },
@@ -400,7 +472,7 @@ export default {
     const p = new URL(request.url).pathname;
     if (p.startsWith("/api/")) return env.GAME.get(env.GAME.idFromName("main")).fetch(request);
     if (p === "/" || p === "/index.html" || p === "/fortiniaud.html")
-      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "Cross-Origin-Opener-Policy": "same-origin-allow-popups" } });
     if (p === "/privacidade") return page("Política de Privacidade", PRIVACY);
     if (p === "/termos") return page("Termos de Serviço", TERMS);
     return new Response("Not found", { status: 404 });

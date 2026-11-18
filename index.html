@@ -133,6 +133,28 @@ body.saver *{animation-duration:0s!important}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chip{padding:8px 12px;border-radius:16px;background:rgba(255,255,255,.12);font-weight:900;font-size:13px;border:2px solid transparent}.chip.on{border-color:var(--acc);background:rgba(255,210,63,.2)}
 .act .btn{width:100%;padding:14px;font-size:16px;margin-top:6px}.empty{padding:20px;text-align:center;opacity:.8}
 @media(max-width:700px){.shopwrap{grid-template-columns:1fr}#detail{order:-1}.big{height:190px}.card .pv{height:90px}}
+/* ===== Loja nova (só na Loja; Mochila e Minhas Skins ficam como antes) ===== */
+#mShop.newshop .box.wide{width:min(820px,100%);height:min(640px,90vh);display:flex;flex-direction:column;overflow:hidden;background:linear-gradient(160deg,#0e3446,#0a1626 70%);border:3px solid #ffd23f;box-shadow:0 0 0 3px rgba(0,0,0,.4),0 14px 40px rgba(0,0,0,.6)}
+#mShop.newshop .mh{padding-bottom:10px;margin-bottom:10px;border-bottom:2px dashed rgba(255,210,63,.45)}
+#mShop.newshop .mh h2{color:#ffd23f;letter-spacing:2px;text-transform:uppercase}
+#mShop.newshop .tabs{gap:6px;flex-wrap:wrap;margin-bottom:10px}
+#mShop.newshop .tab{flex:1 1 auto;border-radius:999px;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.18);padding:8px 12px;font-size:13px}
+#mShop.newshop .tab.on{background:linear-gradient(90deg,#ffd23f,#ff9f1c);border-color:#fff3b0}
+#mShop.newshop .shopwrap{flex:1;min-height:0;grid-template-columns:1fr 290px}
+#mShop.newshop #shopGrid{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;padding:2px 8px 2px 2px;scrollbar-width:thin;scrollbar-color:#ffd23f rgba(0,0,0,.35)}
+#mShop.newshop #shopGrid::-webkit-scrollbar{width:10px}
+#mShop.newshop #shopGrid::-webkit-scrollbar-track{background:rgba(0,0,0,.35);border-radius:10px}
+#mShop.newshop #shopGrid::-webkit-scrollbar-thumb{background:#ffd23f;border-radius:10px;border:2px solid rgba(0,0,0,.35)}
+#mShop.newshop .card{flex-direction:row;align-items:center;text-align:left;gap:12px;padding:8px 12px 8px 8px;border-radius:14px;flex-shrink:0;background:linear-gradient(90deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:2px solid rgba(255,255,255,.14)}
+#mShop.newshop .card .pv{width:76px;height:76px;flex:none;background:rgba(0,0,0,.3);border-radius:10px}
+#mShop.newshop .card .pv img,#mShop.newshop .card .pv svg{max-width:100%;max-height:100%}
+#mShop.newshop .card b{flex:1;font-size:15px}
+#mShop.newshop .card .tag{flex:none;border-radius:8px;padding:5px 10px;font-size:13px}
+#mShop.newshop .card:hover{transform:translateX(4px)}
+#mShop.newshop .card.sel{border-color:#ffd23f;background:linear-gradient(90deg,rgba(255,210,63,.28),rgba(255,210,63,.06));box-shadow:none}
+#mShop.newshop #detail{overflow-y:auto;min-height:0;background:rgba(0,0,0,.35);border:2px solid rgba(255,210,63,.35);border-radius:14px;scrollbar-width:thin}
+#mShop.newshop .big{height:200px}
+@media(max-width:700px){#mShop.newshop .box.wide{height:92vh}#mShop.newshop .shopwrap{grid-template-columns:1fr;grid-template-rows:minmax(0,42%) minmax(0,1fr)}#mShop.newshop .big{height:120px}#mShop.newshop .card .pv{width:60px;height:60px}}
 #topr{position:fixed;top:calc(10px + env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));display:flex;gap:10px;z-index:5}
 .tbtn{position:relative;display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;background:var(--panel);border:2px solid rgba(255,255,255,.25);border-bottom:4px solid var(--acc);border-radius:4px;font-weight:900;box-shadow:0 4px 0 rgba(0,0,0,.35)}
 .tbtn:hover{background:#4b2bb0}.tbtn:active{transform:translateY(3px)}
@@ -224,6 +246,7 @@ input[type=range]{accent-color:var(--acc);width:50%}
 .mcard{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;background:var(--panel);border:2px solid rgba(255,255,255,.25);border-radius:4px;box-shadow:0 4px 0 rgba(0,0,0,.4);transition:0.072s}
 .mcard span{font-size:24px}.mcard b{font-size:14px}.mcard small{font-size:11px;opacity:.7}
 .mcard.on{background:var(--acc);color:#1a1047;border-color:#fff;transform:translateY(-4px);box-shadow:0 8px 0 #b38a00}.mcard.on small{opacity:.8}
+.afrow{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding:8px 12px;background:var(--panel);border:2px solid rgba(255,255,255,.25);border-left:4px solid var(--acc);border-radius:4px;font-weight:900;font-size:13px;cursor:pointer}.afrow[hidden]{display:none}
 @media(max-width:700px){#modes{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 74px)}.mcard span{font-size:20px}.mcard b{font-size:12px}}
 
 /* Roda de emotes */
@@ -286,7 +309,10 @@ input[type=range]{accent-color:var(--acc);width:50%}
 .nrow{display:flex;align-items:center}
 .vf{display:inline-flex;width:18px;height:18px;border-radius:50%;background:#2d8cff;color:#fff;font-size:11px;align-items:center;justify-content:center;font-style:normal;font-weight:900;margin-left:5px;vertical-align:middle;box-shadow:0 1px 0 rgba(0,0,0,.35)}
 .own{background:linear-gradient(135deg,#ffd23f,#ff8a20);color:#1a1047;font-size:11px;font-weight:900;padding:2px 7px;border-radius:4px;margin-left:5px;letter-spacing:1px}
-#bdg{display:flex;align-items:center}.pbdg{display:flex;justify-content:center;align-items:center;margin-bottom:8px}.pbdg .vf{width:24px;height:24px;font-size:14px}.pbdg .own{font-size:13px;padding:3px 9px}
+.adm{background:linear-gradient(135deg,#ff4fa3,#8f3bff);color:#fff;font-size:11px;font-weight:900;padding:2px 7px;border-radius:4px;margin-left:5px;letter-spacing:1px}
+#aChal{font-size:34px;font-weight:900;letter-spacing:8px;text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:12px;margin:8px 0;user-select:all}
+#aPlist{list-style:none;margin-top:12px;display:grid;gap:6px}#aPlist li{display:flex;justify-content:space-between;align-items:center;gap:8px;background:rgba(255,255,255,.08);padding:8px 10px;border-radius:6px}#aPlist button{background:none;color:var(--acc);font-weight:900}#aPlist button:disabled{opacity:.5;color:#fff}
+#bdg{display:flex;align-items:center}.pbdg{display:flex;justify-content:center;align-items:center;margin-bottom:8px}.pbdg .vf{width:24px;height:24px;font-size:14px}.pbdg .own,.pbdg .adm{font-size:13px;padding:3px 9px}
 #hs{position:fixed;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(340px,76vw);z-index:60;padding:8px 14px;border-radius:20px;border:1px solid rgba(255,255,255,.08);background:rgba(10,5,38,.2);color:rgba(255,255,255,.55);font-size:15px;text-transform:none;outline:none;opacity:.5}
 #hs[hidden]{display:none}
 #aVlist{list-style:none;margin-top:12px;display:grid;gap:6px}
@@ -363,6 +389,7 @@ input[type=range]{accent-color:var(--acc);width:50%}
   <button id="modeBtn"><span class="mi" id="gmIcon"></span><span><small>MODO DE JOGO</small><b id="gmName"></b></span><span class="ch">▲</span></button>
   <div id="modeList" hidden></div>
   <p id="modeDesc"></p><div id="modeRow"></div>
+  <label class="afrow" id="afRow" hidden><span>Formação automática</span><input type="checkbox" class="sw" id="afSw"></label>
 </div>
 <button id="play">JOGAR</button>
 <div id="wheel" hidden><div id="wring"></div></div>
@@ -455,6 +482,12 @@ input[type=range]{accent-color:var(--acc);width:50%}
     <div id="pscroll"><div class="pcols" id="ptrack"></div></div>
   </div>
 </div></div>
+<div class="modal" id="mAdmCode" hidden><div class="box panel">
+  <div class="mh"><h2>🔐 Confirmar acesso</h2><button class="x" data-close>✕</button></div>
+  <p class="lbl">Digite o código abaixo para abrir o painel</p>
+  <div id="aChal"></div>
+  <div class="row"><input id="aChIn" placeholder="Código de 5 caracteres" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" style="flex:1;min-width:0;padding:10px;border-radius:6px;border:2px solid rgba(255,255,255,.3);background:rgba(0,0,0,.35);color:#fff;font-size:16px;text-transform:uppercase"><button class="btn" id="aChOk">Confirmar</button></div>
+</div></div>
 <div class="modal" id="mAdmin" hidden><div class="box panel">
   <div class="mh"><h2>🛡️ Admin</h2><button class="x" data-close>✕</button></div>
   <label class="set"><span>V-Bucks infinito<small>Compras não gastam saldo</small></span><input type="checkbox" class="sw" id="aInf"></label>
@@ -468,6 +501,9 @@ input[type=range]{accent-color:var(--acc);width:50%}
   <p class="lbl">Verificar jogador (nome ou código de amigo)</p>
   <div class="row"><input id="aVin" placeholder="Nome ou XXXX-XXXX" maxlength="12" autocomplete="off" style="text-transform:none"><button class="btn" id="aVadd">Verificar</button></div>
   <ul id="aVlist"></ul>
+  <p class="lbl">Conceder ADM (jogadores na partida agora)</p>
+  <div class="row"><button class="btn" id="aPlRef">Atualizar lista</button></div>
+  <ul id="aPlist"></ul>
 </div></div>
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -514,7 +550,7 @@ const find = (t,id) => ITEMS[t].find(i => i.id === id);
 
 /* ===== Estado salvo (localStorage; no Cloudflare use KV/D1 para sincronizar) ===== */
 const DEF = {name:"Jogador", vb:0, lvl:0, xp:0, pxp:0, pcl:[], pcp:[], prem:false, code:"", friends:[], fmeta:{}, key:"", fmig:false, owned:["m0","f0","h0","b0","bn"], sty:{}, osty:{}, gmode:"br", eq:{char:"m0",hammer:"h0",bag:"b0"},
-  cfg:{quality:"high",fps:60,shadow:true,anim:true,part:true,showFps:false,saver:false,vol:60}, daily:0, lang:""};
+  cfg:{quality:"high",fps:60,shadow:true,anim:true,part:true,showFps:false,saver:false,vol:60}, daily:0, lang:"", af:true};
 let S;
 const KEY="lobby_save2"; let LS=null;
 try{ LS=window.localStorage; LS.setItem("__t","1"); LS.removeItem("__t"); }catch(e){ LS=null; } /* localStorage pode estar bloqueado em alguns navegadores */
@@ -540,7 +576,7 @@ addEventListener("pagehide",()=>{ save(); pushSave(true); }); document.addEventL
 const genCode = () => { const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let r=""; for(let i=0;i<8;i++){ r+=c[Math.random()*c.length|0]; if(i==3) r+="-"; } return r; };
 if(!S.code){ S.code = genCode(); save(); }
 if(!S.key){ S.key=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,"0")).join(""); save(); } /* chave deste aparelho (visitante) */
-const MP={sid:null,es:null,on:false,busy:false,tm:null,st:null,friends:[],reqs:[],party:null,invites:[],last:""}; /* multiplayer */
+const MP={adm:false,sid:null,es:null,on:false,busy:false,tm:null,st:null,friends:[],reqs:[],party:null,invites:[],last:""}; /* multiplayer */
 const ACTORS={}; const SLOTS=[[-1.55,.25],[1.55,.25],[1.05,-1.5]], SLOT_YAW=[.3,-.3,-.15]; /* amigos do grupo nos círculos do lobby */
 if(S.name==="Jogador"){ S.name="Jogador"+(100+Math.random()*900|0); save(); }
 
@@ -677,7 +713,7 @@ function buildChar(c,hm,bg){
   return g;
 }
 
-let renderer,scene,camera,hero,keyL,floor,swingT=-1,drag=null;
+let renderer,scene,camera,hero,keyL,floor,swingT=-1,drag=null; const PADS=[]; /* círculos do chão: [0]=centro (você), [1..3]=posições dos amigos */
 if(OK){
   renderer=new THREE.WebGLRenderer({canvas:$("#gl"),alpha:true,antialias:true,powerPreference:"high-performance"});
   renderer.shadowMap.enabled=true; scene=new THREE.Scene(); camera=new THREE.PerspectiveCamera(32,1,.1,60);
@@ -690,7 +726,7 @@ if(OK){
     const p=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.08,48),MT(col,{emissive:col,emissiveIntensity:em*.6,transparent:true,opacity:.85}));
     p.position.set(x,.04,z); p.receiveShadow=true; scene.add(p);
     const ring=new THREE.Mesh(new THREE.TorusGeometry(r,.035,8,64),new THREE.MeshBasicMaterial({color:col}));
-    ring.rotation.x=Math.PI/2; ring.position.set(x,.085,z); scene.add(ring); });
+    ring.rotation.x=Math.PI/2; ring.position.set(x,.085,z); scene.add(ring); PADS.push([p,ring]); });
 }
 function resize3D(){
   if(!OK) return;
@@ -722,12 +758,12 @@ function removeActor(c){ const A=ACTORS[c]; if(!A) return; fxStop(A);
   if(A.model){ scene.remove(A.model); A.model.traverse(o=>o.geometry&&o.geometry.dispose()); } A.tag.remove(); delete ACTORS[c]; }
 function setParty(p){
   MP.party=p; if(!OK) return; const me=S.code, others=p?p.members.filter(m=>m.code!==me):[], keep=new Set(others.map(m=>m.code));
-  for(const c in ACTORS) if(!keep.has(c)) removeActor(c);
+  const cap=capOf(); for(const c in ACTORS) if(!keep.has(c)||ACTORS[c].slot>=cap-1) removeActor(c);
   others.forEach(m=>{ let A=ACTORS[m.code];
-    if(!A){ const used=new Set(Object.values(ACTORS).map(a=>a.slot)), slot=[0,1,2].find(i=>!used.has(i)); if(slot===undefined) return; A=ACTORS[m.code]=newActor(m.code,slot); }
+    if(!A){ const used=new Set(Object.values(ACTORS).map(a=>a.slot)), slot=[0,1,2].find(i=>i<cap-1&&!used.has(i)); if(slot===undefined) return; A=ACTORS[m.code]=newActor(m.code,slot); }
     A.name=m.name; A.lvl=m.lvl; A.leader=p.leader===m.code; A.online=m.online;
     const j=JSON.stringify(m.app||{}); if(j!==A.appj||!A.model){ A.appj=j; A.app=m.app||{}; buildActor(A); }
-    A.tag.firstChild.textContent=A.name; A.tag.lastChild.textContent="Nv "+A.lvl+(A.leader?" · Líder":""); A.tag.classList.toggle("lead",A.leader); A.tag.classList.toggle("off",!A.online); });
+    A.tag.firstChild.textContent=(m.adm?"[ADM] ":"")+A.name; A.tag.lastChild.textContent="Nv "+A.lvl+(A.leader?" · Líder":""); A.tag.classList.toggle("lead",A.leader); A.tag.classList.toggle("off",!A.online); });
 }
 function actorEmote(A,id){
   const d=EMOTES.find(x=>x.id===id); if(!d||!A.model) return; const dur=Math.min(10,Math.max(3,d.dur)), was=!!A.em;
@@ -804,6 +840,7 @@ function openStore(m, keep){
   $("#shopVb").textContent = "💎 " + (S.inf?"∞":S.vb);
   $("#shopTabs").innerHTML = Object.entries(TABS).map(([k,v])=>`<button class="tab ${k===tab?"on":""}" data-t="${k}">${v}</button>`).join("");
   const g=$("#shopGrid"); g.classList.toggle("anim",!keep); clearTimeout(openStore.t); if(!keep) openStore.t=setTimeout(()=>g.classList.remove("anim"),450);
+  $("#mShop").classList.toggle("newshop", m==="shop");
   renderGrid(); renderDetail(); $("#mShop").hidden = false;
 }
 function renderGrid(){
@@ -924,7 +961,7 @@ function badges(){
   $("#acName").textContent=S.name; $("#acCode").textContent=S.code;
 }
 function friendCard(f){
-  const inP=MP.party&&MP.party.members.some(m=>m.code===f.code), full=MP.party&&MP.party.members.length>=4, can=MP.on&&f.online&&!inP&&!f.party&&!full;
+  const inP=MP.party&&MP.party.members.some(m=>m.code===f.code), full=MP.party&&MP.party.members.length>=capOf(), can=MP.on&&capOf()>1&&f.online&&!inP&&!f.party&&!full;
   const st=inP?"No seu grupo":f.online?(f.party?"Em outro grupo":"Online"):"Offline";
   return `<div class="fcard"><span class="fav" style="background:hsl(${hue(f.code)},70%,50%)">${esc((f.name||"?")[0].toUpperCase())}<i class="fdot ${f.online?"on":""}"></i></span><div class="finfo"><b>${esc(f.name)}${isVer(f.code)?'<i class="vf">✔</i>':""}</b><small>Nv ${f.lvl||0} · ${st}</small></div>${can?`<button class="mini" data-inv="${f.code}">Convidar</button>`:""}<button class="mini red" data-fr="${f.code}">Remover</button></div>`;
 }
@@ -982,9 +1019,10 @@ function mpSendState(){ if(!MP.on) return; const k=JSON.stringify([S.name,mpApp(
 function mpEmote(id){ if(MP.on&&MP.party) mpPost("/api/mp/emote",{id}); }
 function mpCache(){ S.friends=MP.friends.map(f=>f.code); S.fmeta={}; MP.friends.forEach(f=>{ S.fmeta[f.code]={name:f.name,lvl:f.lvl}; }); save(); }
 function mpEvent(m){
-  if(m.t==="init"){ const legacy=(S.friends||[]).filter(c=>/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(c)&&!(m.friends||[]).some(f=>f.code===c));
+  if(m.t==="init"){ MP.adm=!!m.adm; const legacy=(S.friends||[]).filter(c=>/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(c)&&!(m.friends||[]).some(f=>f.code===c));
     MP.friends=m.friends||[]; MP.reqs=m.reqs||[]; setParty(m.party); mpCache();
     if(!S.fmig){ S.fmig=true; save(); legacy.slice(0,30).forEach(c=>mpPost("/api/mp/friend/add",{target:c})); } } /* amigos antigos viram pedidos */
+  else if(m.t==="adm"){ MP.adm=!!m.on; }
   else if(m.t==="friends"){ MP.friends=m.friends||[]; mpCache(); }
   else if(m.t==="reqs") MP.reqs=m.reqs||[];
   else if(m.t==="party") setParty(m.party);
@@ -1274,11 +1312,17 @@ let accView="choose", accTab="reg", gCfg=null, gLoad=null;
 const accMsg=(m,c)=>{ const e=$("#accMsg"); if(e){ e.className="hint "+(c||"bad"); e.textContent=m||""; } };
 const loadGsi=()=>gLoad||(gLoad=new Promise((ok,no)=>{ const t=document.createElement("script"); t.src="https://accounts.google.com/gsi/client"; t.async=true; t.onload=ok; t.onerror=()=>{ gLoad=null; no(); }; document.head.appendChild(t); }));
 async function googleBtn(el,cb){
-  if(!gCfg){ gCfg=await fetch("/api/config").then(r=>r.json()).catch(()=>null); }
+  if(!gCfg||!gCfg.googleClientId){ gCfg=await fetch("/api/config",{cache:"no-store"}).then(r=>r.json()).catch(()=>null); }
+  if(!el.isConnected) return; /* a tela mudou enquanto carregava */
   if(!gCfg){ el.innerHTML='<p class="hint bad">Servidor indisponível.</p>'; return; }
   if(!gCfg.googleClientId){ el.innerHTML='<p class="hint bad">Login com Google ainda não foi configurado no servidor.</p>'; return; }
-  try{ await loadGsi(); }catch(e){ el.innerHTML='<p class="hint bad">Não foi possível carregar o Google.</p>'; return; }
-  google.accounts.id.initialize({client_id:gCfg.googleClientId,callback:r=>cb(r.credential)});
+  try{ await loadGsi(); }catch(e){ if(el.isConnected) el.innerHTML='<p class="hint bad">Não foi possível carregar o Google.</p>'; return; }
+  if(!el.isConnected) return;
+  if(!window.google||!google.accounts||!google.accounts.id){ gLoad=null; el.innerHTML='<p class="hint bad">Não foi possível carregar o Google.</p>'; return; }
+  google.accounts.id.initialize({client_id:gCfg.googleClientId,ux_mode:"popup",auto_select:false,
+    callback:r=>{ if(!r||!r.credential) return accMsg("Não foi possível entrar com o Google. Tente de novo.");
+      accMsg("Conectando...","ok"); Promise.resolve(cb(r.credential)).catch(()=>accMsg("Erro ao conectar. Tente de novo.")); }});
+  el.innerHTML="";
   google.accounts.id.renderButton(el,{theme:"filled_blue",size:"large",text:"continue_with",width:260});
 }
 function renderAcc(){
@@ -1327,26 +1371,40 @@ $("#accBody").onclick=async e=>{
 addEventListener("keydown",e=>{ if(e.key==="Enter"&&!$("#mProfile").hidden&&!document.querySelector('[data-pp="acc"]').hidden&&e.target.matches("#accBody input")){ const b=$("#doReg")||$("#doIn"); if(b) b.click(); } });
 
 /* Modos de jogo e Jogar */
-const MODES=[{id:"solo",n:"Solo",p:"1 jogador",d:"100 jogadores · cada um por si",k:"12 jogadores · cada um por si",i:"👤"},{id:"duo",n:"Duplas",p:"2 jogadores",d:"50 duplas · jogue com 1 amigo",k:"6 duplas · jogue com 1 amigo",i:"👥"},{id:"squad",n:"Esquadrão",p:"4 jogadores",d:"25 esquadrões · trabalhe em equipe",k:"3 esquadrões · trabalhe em equipe",i:"🛡️"}];
+const MODES=[{id:"solo",n:"Solo",p:"1 jogador",d:"100 jogadores · cada um por si",k:"12 jogadores · cada um por si",i:"👤"},{id:"duo",n:"Dupla",p:"2 jogadores",d:"50 duplas · jogue com 1 amigo",k:"6 duplas · jogue com 1 amigo",i:"👥"},{id:"squad",n:"Squad",p:"4 jogadores",d:"25 esquadrões · trabalhe em equipe",k:"3 esquadrões · trabalhe em equipe",i:"🛡️"}];
 const GMODES=[{id:"br",n:"Battle Royale",d:"Último sobrevivente vence",i:"🏆"},{id:"dm",n:"Mata-mata",d:"Respawn infinito · vence quem eliminar mais",i:"💥"},{id:"1v1",n:"1v1",d:"Duelo direto, um contra um",i:"⚔️"}];
 const curMode=()=>MODES.find(m=>m.id===S.mode)||MODES[0];
 const curG=()=>GMODES.find(m=>m.id===S.gmode)||GMODES[0];
+const CAP={solo:1,duo:2,squad:4};
+function capOf(){ return curG().id==="1v1"?1:(CAP[curMode().id]||1); } /* nº de círculos / vagas da equipe */
+const autoOn=()=>S.af!==false&&capOf()>1;
+const teamNow=()=>MP.party?Math.min(MP.party.members.length,capOf()):1;
+function drawPads(){ const c=capOf(); PADS.forEach((p,i)=>p.forEach(o=>o.visible=i<c)); }
 function drawMode(){
   const g=curG(), m=curMode(), lock=g.id==="1v1";
   $("#gmIcon").textContent=g.i; $("#gmName").textContent=g.n;
   $("#modeList").innerHTML=GMODES.map(x=>`<button class="mopt ${x.id===g.id?"on":""}" data-g="${x.id}"><span>${x.i}</span><div><b>${x.n}</b><small>${x.d}</small></div></button>`).join("");
-  $("#modeDesc").textContent = lock ? "Duelo · 1 contra 1, sem equipes" : g.id==="dm" ? m.k : m.d;
+  $("#modeDesc").textContent = lock ? "Duelo · 1 contra 1, sem equipes" : (m.id==="duo"&&S.af===false) ? "Jogue sozinho contra duplas" : g.id==="dm" ? m.k : m.d;
+  $("#afRow").hidden = capOf()<2; $("#afSw").checked = S.af!==false;
+  drawPads(); if(MP.party) setParty(MP.party);
   $("#modeRow").classList.toggle("lock",lock);
   $("#modeRow").innerHTML=MODES.map(m2=>`<button class="mcard ${!lock&&m2.id===m.id?"on":""}" data-m="${m2.id}"><span>${m2.i}</span><b>${m2.n}</b><small>${m2.p}</small></button>`).join("");
 }
 $("#modeRow").onclick=e=>{ const b=e.target.closest("[data-m]"); if(b){ S.mode=b.dataset.m; save(); drawMode(); } };
+$("#afSw").onchange=e=>{ S.af=e.target.checked; save(); drawMode(); };
 $("#modeBtn").onclick=e=>{ e.stopPropagation(); $("#modeList").hidden=!$("#modeList").hidden; };
 $("#modeList").onclick=e=>{ const b=e.target.closest("[data-g]"); if(b){ S.gmode=b.dataset.g; save(); drawMode(); $("#modeList").hidden=true; } };
 document.addEventListener("click",e=>{ if(!e.target.closest("#modes")) $("#modeList").hidden=true; });
 let pt;
 $("#play").onclick=()=>{
-  $("#mPlay").hidden=false; const t=$("#playTxt"), bar=$("#playBar"); t.textContent="Procurando partida · "+curG().n+(curG().id==="1v1"?"":" · "+curMode().n); let p=0;
-  clearInterval(pt); pt=setInterval(()=>{ p+=4; bar.style.width=p+"%"; if(p>=100){ clearInterval(pt); t.textContent="Partida encontrada! 🎮"; } },120);
+  $("#mPlay").hidden=false; const t=$("#playTxt"), bar=$("#playBar"); let p=0, shown="";
+  const label=()=>{ const g=curG(), m=curMode(), base="Procurando partida · "+g.n+(g.id==="1v1"?"":" · "+m.n);
+    if(autoOn()&&teamNow()<capOf()) return "Formando equipe · "+teamNow()+"/"+capOf(); /* formação automática: espera completar */
+    if(capOf()>1&&teamNow()<capOf()) return base+(m.id==="duo"?" · sozinho contra duplas":" · equipe incompleta"); return base; };
+  const setT=x=>{ if(x!==shown){ shown=x; t.textContent=x; } }; setT(label());
+  clearInterval(pt); pt=setInterval(()=>{
+    if(autoOn()&&teamNow()<capOf()){ p=Math.min(p,40); bar.style.width=p+"%"; setT(label()); p+=1; if(p>40) p=10; return; } /* aguarda completar a equipe */
+    p+=4; bar.style.width=p+"%"; setT(label()); if(p>=100){ clearInterval(pt); setT("Partida encontrada! 🎮"); } },120);
 };
 $("#cancelPlay").onclick=()=>{ clearInterval(pt); $("#mPlay").hidden=true; };
 $("#sTabs").onclick=e=>{ const k=e.target.dataset.st; if(!k) return;
@@ -1407,14 +1465,12 @@ function loop(t){
 let rz; addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(sizeCanvas,150); });
 if(fresh){ const weak=(navigator.hardwareConcurrency||4)<=4||/Android|iPhone/i.test(navigator.userAgent); if(weak){ C.quality="low"; C.shadow=false; C.part=false; C.fps=30; } }
 /* ===== Admin (código secreto) ===== */
-const cyrb53=(str,seed=0)=>{let h1=0xdeadbeef^seed,h2=0x41c6ce57^seed;for(let i=0,ch;i<str.length;i++){ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677);}h1=Math.imul(h1^(h1>>>16),2246822507);h1^=Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507);h2^=Math.imul(h1^(h1>>>13),3266489909);return 4294967296*(2097151&h2)+(h1>>>0);};
-const ADM=2543653124716815; /* só o hash do código fica aqui */
 const hs=$("#hs");
 const esc=v=>String(v).replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";");
 const isVer=c=>(S.vlist||[]).some(x=>x.toUpperCase()===String(c).toUpperCase());
 function renderBadges(){
   const me=S.ver||isVer(S.name)||isVer(S.code);
-  const h=(me?'<i class="vf" title="Verificado">✔</i>':"")+(S.owner?'<b class="own">OWNER</b>':"");
+  const h=(me?'<i class="vf" title="Verificado">✔</i>':"")+(S.owner?'<b class="own">OWNER</b>':"")+(MP.adm?'<b class="adm">ADM</b>':"");
   $("#bdg").innerHTML=h; $("#pBdg").innerHTML=h; }
 function openHS(){ hs.hidden=false; hs.value=""; hs.focus(); }
 function closeHS(){ if(hs.hidden) return; hs.hidden=true; hs.value=""; hs.blur(); }
@@ -1422,13 +1478,40 @@ addEventListener("keydown",e=>{ if(e.key==="F12"){ e.preventDefault(); hs.hidden
 hs.addEventListener("keydown",e=>{
   if(e.key==="F12"){ e.preventDefault(); closeHS(); }
   else if(e.key==="Escape") closeHS();
-  else if(e.key==="Enter"){ const v=hs.value.trim().toLowerCase(); closeHS();
-    if(cyrb53(v)===ADM){ S.admin=true; S.owner=true; save(); renderBadges(); openAdmin(); } } });
+  else if(e.key==="Enter"){ const v=hs.value.trim().toLowerCase(); closeHS(); admStart(v); } });
 hs.addEventListener("blur",()=>setTimeout(closeHS,150));
 let vtaps=[]; /* celular: 6 toques rápidos nos V-Bucks abrem a busca */
 $("#vb").addEventListener("click",()=>{ const n=Date.now(); vtaps=vtaps.filter(t=>n-t<2500); vtaps.push(n); if(vtaps.length>=6){ vtaps=[]; openHS(); } });
 function renderAdminList(){ $("#aVlist").innerHTML=(S.vlist||[]).map((v,i)=>`<li><span>${esc(v)} <i class="vf">✔</i></span><button data-vr="${i}">Remover</button></li>`).join("")||'<li><span style="opacity:.7">Ninguém verificado ainda</span></li>'; }
-function openAdmin(){ $("#aPrem").checked=!!S.prem; $("#aInf").checked=!!S.inf; $("#aVer").checked=!!S.ver; $("#aOwn").checked=!!S.owner; renderAdminList(); $("#mAdmin").hidden=false; }
+/* Acesso ao painel: o servidor confere o código, gera o código de 5 caracteres e valida a confirmação */
+async function admStart(v){
+  if(!v&&!MP.adm) return;
+  if(!MP.on) return toast("Sem conexão com o servidor");
+  const r=await mpPost("/api/admin/start",{code:v});
+  if(!r.ok){ if(r.status!==403&&r.status!==429) toast(r.data.error||"Erro"); return; } /* código errado: sem pistas */
+  $("#aChal").textContent=r.data.challenge; $("#aChIn").value=""; $("#mAdmCode").hidden=false; $("#aChIn").focus();
+}
+async function admConfirm(){
+  const v=$("#aChIn").value.trim(); if(!v) return;
+  const r=await mpPost("/api/admin/confirm",{code:v});
+  if(!r.ok){ toast(r.data.error||"Erro"); $("#aChIn").value=""; if(r.data.reset||r.status===401) $("#mAdmCode").hidden=true; return; }
+  $("#mAdmCode").hidden=true; $("#aChIn").value=""; $("#aChal").textContent="";
+  S.admin=true; if(r.data.owner) S.owner=true; save(); renderBadges(); openAdmin();
+}
+$("#aChOk").onclick=admConfirm;
+$("#aChIn").addEventListener("keydown",e=>{ if(e.key==="Enter") admConfirm(); });
+async function admPlayers(){
+  const r=await mpPost("/api/admin/players",{});
+  if(!r.ok){ toast(r.data.error||"Erro"); if(r.data.reset) $("#mAdmin").hidden=true; return; }
+  $("#aPlist").innerHTML=r.data.players.map(p=>`<li><span>${esc(p.name)} <small style="opacity:.7">Nv ${p.lvl}${p.me?" · você":""}</small>${p.adm?' <b class="adm">ADM</b>':""}</span><button data-g="${esc(p.code)}"${p.adm?" disabled":""}>${p.adm?"ADM":"Conceder ADM"}</button></li>`).join("")||'<li><span style="opacity:.7">Ninguém online</span></li>';
+}
+$("#aPlRef").onclick=admPlayers;
+$("#aPlist").onclick=async e=>{ const c=e.target.dataset.g; if(!c||e.target.disabled) return;
+  const r=await mpPost("/api/admin/grant",{code:c});
+  if(!r.ok){ toast(r.data.error||"Erro"); if(r.data.reset) $("#mAdmin").hidden=true; }
+  else toast("ADM concedido a "+r.data.name);
+  admPlayers(); };
+function openAdmin(){ $("#aPrem").checked=!!S.prem; $("#aInf").checked=!!S.inf; $("#aVer").checked=!!S.ver; $("#aOwn").checked=!!S.owner; renderAdminList(); $("#mAdmin").hidden=false; admPlayers(); }
 $("#aInf").onchange=e=>{ if(e.target.checked){ if(!S.inf) S.vbPre=S.vb; S.inf=true; } else { S.inf=false; S.vb=S.vbPre||0; } refresh(); };
 $("#aVer").onchange=e=>{ S.ver=e.target.checked; save(); renderBadges(); };
 $("#aOwn").onchange=e=>{ S.owner=e.target.checked; save(); renderBadges(); };
@@ -1437,7 +1520,7 @@ $("#aVadd").onclick=()=>{ const v=$("#aVin").value.trim(); if(!v) return;
   $("#aVin").value=""; save(); renderAdminList(); renderBadges(); toast("Jogador verificado"); };
 $("#aVlist").onclick=e=>{ const i=e.target.dataset.vr; if(i===undefined) return; S.vlist.splice(+i,1); save(); renderAdminList(); renderBadges(); };
 /* ===== Idiomas (pt / en / es) ===== */
-const DICT=[["Amigos","Friends","Amigos"],["Meus amigos","My friends","Mis amigos"],["Adicionar","Add","Añadir"],["Configurações","Settings","Ajustes"],["Loja","Shop","Tienda"],["Minhas Skins","My Skins","Mis skins"],["MODO DE JOGO","GAME MODE","MODO DE JUEGO"],["JOGAR","PLAY","JUGAR"],["Gráficos","Graphics","Gráficos"],["Desempenho","Performance","Rendimiento"],["Áudio","Audio","Audio"],["Conta","Account","Cuenta"],["Idioma do jogo","Game language","Idioma del juego"],["Idioma","Language","Idioma"],["Qualidade gráfica","Graphics quality","Calidad gráfica"],["Resolução e efeitos da cena","Scene resolution and effects","Resolución y efectos de la escena"],["Baixa","Low","Baja"],["Média","Medium","Media"],["Alta","High","Alta"],["Sombras","Shadows","Sombras"],["Sombra do personagem no chão","Character shadow on the floor","Sombra del personaje en el suelo"],["Animações","Animations","Animaciones"],["Respiração e piscar de olhos","Breathing and blinking","Respiración y parpadeo"],["Partículas de fundo","Background particles","Partículas de fondo"],["Poeira brilhante na tela","Sparkling dust on screen","Polvo brillante en pantalla"],["Limite de FPS","FPS limit","Límite de FPS"],["Menos FPS economiza bateria","Lower FPS saves battery","Menos FPS ahorra batería"],["Ilimitado","Unlimited","Ilimitado"],["Mostrar FPS","Show FPS","Mostrar FPS"],["Contador no canto da tela","Counter in the screen corner","Contador en la esquina"],["Economia de bateria","Battery saver","Ahorro de batería"],["Limita a 30 FPS e desliga efeitos","Caps at 30 FPS and turns off effects","Limita a 30 FPS y apaga efectos"],["Otimizar automaticamente","Optimize automatically","Optimizar automáticamente"],["Volume geral","Master volume","Volumen general"],["Música e efeitos","Music and effects","Música y efectos"],["Nome do perfil","Profile name","Nombre del perfil"],["Alterar nome","Change name","Cambiar nombre"],["Seu código de amigo","Your friend code","Tu código de amigo"],["Resetar progresso","Reset progress","Reiniciar progreso"],["Apagar todo o progresso?","Delete all progress?","¿Borrar todo el progreso?"],["Perfil","Profile","Perfil"],["Escolher da galeria","Choose from gallery","Elegir de la galería"],["Remover foto","Remove photo","Quitar foto"],["Código de amigo","Friend code","Código de amigo"],["Código do amigo","Friend's code","Código del amigo"],["Salvar","Save","Guardar"],["Procurando partida...","Finding match...","Buscando partida..."],["Procurando partida","Finding match","Buscando partida"],["Partida encontrada!","Match found!","¡Partida encontrada!"],["Cancelar","Cancel","Cancelar"],["Copiar código","Copy code","Copiar código"],["Copiar","Copy","Copiar"],["Compartilhar","Share","Compartir"],["Remover","Remove","Quitar"],["Nenhum amigo ainda.","No friends yet.","Aún no tienes amigos."],["Toque em Adicionar e digite o código de alguém.","Tap Add and enter someone's code.","Toca Añadir e ingresa el código de alguien."],["Amigo","Friend","Amigo"],["Use de 3 a 10 caracteres","Use 3 to 10 characters","Usa de 3 a 10 caracteres"],["Só letras, números e _ (sem espaços ou acentos)","Only letters, numbers and _ (no spaces or accents)","Solo letras, números y _ (sin espacios ni acentos)"],["Use no máximo um “_”","Use at most one “_”","Usa como máximo un “_”"],["Nome válido ✓","Valid name ✓","Nombre válido ✓"],["Esse já é o seu nome","That's already your name","Ese ya es tu nombre"],["Nome salvo só neste aparelho (servidor offline)","Name saved on this device only (server offline)","Nombre guardado solo en este dispositivo (servidor sin conexión)"],["Nome alterado!","Name changed!","¡Nombre cambiado!"],["Já existe alguém com esse nome","Someone already has that name","Ya existe alguien con ese nombre"],["Verificando...","Checking...","Verificando..."],["Não foi possível carregar o 3D. Verifique a internet.","Could not load 3D. Check your connection.","No se pudo cargar el 3D. Revisa tu conexión."],["V-Bucks insuficientes","Not enough V-Bucks","V-Bucks insuficientes"],["Comprado e equipado!","Purchased and equipped!","¡Comprado y equipado!"],["Estilo comprado e equipado!","Style purchased and equipped!","¡Estilo comprado y equipado!"],["Nome atualizado","Name updated","Nombre actualizado"],["Escolha uma imagem","Choose an image","Elige una imagen"],["Foto atualizada","Photo updated","Foto actualizada"],["Imagem inválida","Invalid image","Imagen inválida"],["Copiado!","Copied!","¡Copiado!"],["Código inválido","Invalid code","Código inválido"],["Esse é o seu código","That's your own code","Ese es tu propio código"],["Já adicionado","Already added","Ya añadido"],["Amigo adicionado!","Friend added!","¡Amigo añadido!"],["Otimizado: modo leve","Optimized: light mode","Optimizado: modo ligero"],["Otimizado: qualidade alta","Optimized: high quality","Optimizado: calidad alta"],["Progresso recuperado","Progress recovered","Progreso recuperado"],["Equipado","Equipped","Equipado"],["Equipar","Equip","Equipar"],["Seu","Owned","Tuyo"],["Estilos (cores)","Styles (colors)","Estilos (colores)"],[" · prévia"," · preview"," · vista previa"],["Depois de comprar, você libera estilos de cor extras por","After buying, you can unlock extra color styles for","Tras comprar, desbloqueas estilos de color extra por"],[" cada."," each."," cada uno."],["Estilo extra: só muda as cores.","Extra style: only changes the colors.","Estilo extra: solo cambia los colores."],["Comprar estilo","Buy style","Comprar estilo"],["Comprar","Buy","Comprar"],["Você ainda não tem itens aqui. Compre na Loja.","You don't have any items here yet. Buy some in the Shop.","Aún no tienes artículos aquí. Compra en la Tienda."],["Marreta","Hammer","Martillo"],["Personagem","Character","Personaje"],["Mochila","Backpack","Mochila"],["Recruta","Recruit","Recluta"],["Marreta Comum","Common Hammer","Martillo común"],["Marreta Trovão","Thunder Hammer","Martillo Trueno"],["Marreta Magma","Magma Hammer","Martillo Magma"],["Sem mochila","No backpack","Sin mochila"],["Mochila Simples","Simple Backpack","Mochila simple"],["Mochila Tática","Tactical Backpack","Mochila táctica"],["Mochila Estelar","Star Backpack","Mochila estelar"],["Visual inicial, grátis.","Starter look, free.","Aspecto inicial, gratis."],["Ferramenta inicial.","Starter tool.","Herramienta inicial."],["Skin detalhada:","Detailed skin:","Skin detallada:"],["soldado de elite com colete, capacete, luvas e joelheiras.","elite soldier with vest, helmet, gloves and knee pads.","soldado de élite con chaleco, casco, guantes y rodilleras."],["piloto ousada com jaqueta, óculos de voo e cachecol.","bold pilot with jacket, flight goggles and scarf.","piloto atrevida con chaqueta, gafas de vuelo y bufanda."],["Marreta clássica, simples e barata. Estilos extras são só cores.","Classic hammer, simple and cheap. Extra styles are just colors.","Martillo clásico, simple y barato. Los estilos extra son solo colores."],["martelo de guerra hexagonal com ponta de picareta e cristal.","hexagonal war hammer with pickaxe tip and crystal.","martillo de guerra hexagonal con punta de pico y cristal."],["Mochila básica. Já vem com você, grátis.","Basic backpack. Comes with you, free.","Mochila básica. Ya viene contigo, gratis."],["Aba, bolso traseiro, bolsas laterais e rolo de dormir.","Flap, rear pocket, side pouches and sleeping roll.","Solapa, bolsillo trasero, bolsas laterales y rollo para dormir."],["mochila arredondada de jato, com aletas e propulsores.","rounded jet backpack with fins and thrusters.","mochila redonda de propulsión con aletas y propulsores."],["Patrulha","Patrol","Patrulla"],["Piloto","Pilot","Piloto"],["Relâmpago","Lightning","Relámpago"],["Tempestade","Storm","Tormenta"],["Gelo Negro","Black Ice","Hielo negro"],["Floresta","Forest","Bosque"],["Noturna","Night","Nocturna"],["Rosa","Pink","Rosa"],["Ciano","Cyan","Cian"],["Duplas","Duos","Dúos"],["Esquadrão","Squad","Escuadrón"],["jogadores","players","jugadores"],["jogador","player","jugador"],["duplas","duos","dúos"],["esquadrões","squads","escuadrones"],["cada um por si","free-for-all","todos contra todos"],["jogue com 1 amigo","play with 1 friend","juega con 1 amigo"],["trabalhe em equipe","teamwork","trabajo en equipo"],["Último sobrevivente vence","Last one standing wins","Gana el último en pie"],["Mata-mata","Deathmatch","Combate a muerte"],["Respawn infinito · vence quem eliminar mais","Infinite respawn · most eliminations wins","Reaparición infinita · gana quien elimine más"],["Duelo direto, um contra um","Direct duel, one on one","Duelo directo, uno contra uno"],["Duelo · 1 contra 1, sem equipes","Duel · 1 vs 1, no teams","Duelo · 1 contra 1, sin equipos"],["Acenando","Waving","Saludando"],["Palmas","Clapping","Aplausos"],["Box","Boxing","Boxeo"],["Rebolar","Twerk","Menear"],["Risada","Laughing","Risa"]];
+const DICT=[["Amigos","Friends","Amigos"],["Meus amigos","My friends","Mis amigos"],["Adicionar","Add","Añadir"],["Configurações","Settings","Ajustes"],["Loja","Shop","Tienda"],["Minhas Skins","My Skins","Mis skins"],["MODO DE JOGO","GAME MODE","MODO DE JUEGO"],["JOGAR","PLAY","JUGAR"],["Gráficos","Graphics","Gráficos"],["Desempenho","Performance","Rendimiento"],["Áudio","Audio","Audio"],["Conta","Account","Cuenta"],["Idioma do jogo","Game language","Idioma del juego"],["Idioma","Language","Idioma"],["Qualidade gráfica","Graphics quality","Calidad gráfica"],["Resolução e efeitos da cena","Scene resolution and effects","Resolución y efectos de la escena"],["Baixa","Low","Baja"],["Média","Medium","Media"],["Alta","High","Alta"],["Sombras","Shadows","Sombras"],["Sombra do personagem no chão","Character shadow on the floor","Sombra del personaje en el suelo"],["Animações","Animations","Animaciones"],["Respiração e piscar de olhos","Breathing and blinking","Respiración y parpadeo"],["Partículas de fundo","Background particles","Partículas de fondo"],["Poeira brilhante na tela","Sparkling dust on screen","Polvo brillante en pantalla"],["Limite de FPS","FPS limit","Límite de FPS"],["Menos FPS economiza bateria","Lower FPS saves battery","Menos FPS ahorra batería"],["Ilimitado","Unlimited","Ilimitado"],["Mostrar FPS","Show FPS","Mostrar FPS"],["Contador no canto da tela","Counter in the screen corner","Contador en la esquina"],["Economia de bateria","Battery saver","Ahorro de batería"],["Limita a 30 FPS e desliga efeitos","Caps at 30 FPS and turns off effects","Limita a 30 FPS y apaga efectos"],["Otimizar automaticamente","Optimize automatically","Optimizar automáticamente"],["Volume geral","Master volume","Volumen general"],["Música e efeitos","Music and effects","Música y efectos"],["Nome do perfil","Profile name","Nombre del perfil"],["Alterar nome","Change name","Cambiar nombre"],["Seu código de amigo","Your friend code","Tu código de amigo"],["Resetar progresso","Reset progress","Reiniciar progreso"],["Apagar todo o progresso?","Delete all progress?","¿Borrar todo el progreso?"],["Perfil","Profile","Perfil"],["Escolher da galeria","Choose from gallery","Elegir de la galería"],["Remover foto","Remove photo","Quitar foto"],["Código de amigo","Friend code","Código de amigo"],["Código do amigo","Friend's code","Código del amigo"],["Salvar","Save","Guardar"],["Procurando partida...","Finding match...","Buscando partida..."],["Procurando partida","Finding match","Buscando partida"],["Partida encontrada!","Match found!","¡Partida encontrada!"],["Cancelar","Cancel","Cancelar"],["Copiar código","Copy code","Copiar código"],["Copiar","Copy","Copiar"],["Compartilhar","Share","Compartir"],["Remover","Remove","Quitar"],["Nenhum amigo ainda.","No friends yet.","Aún no tienes amigos."],["Toque em Adicionar e digite o código de alguém.","Tap Add and enter someone's code.","Toca Añadir e ingresa el código de alguien."],["Amigo","Friend","Amigo"],["Use de 3 a 10 caracteres","Use 3 to 10 characters","Usa de 3 a 10 caracteres"],["Só letras, números e _ (sem espaços ou acentos)","Only letters, numbers and _ (no spaces or accents)","Solo letras, números y _ (sin espacios ni acentos)"],["Use no máximo um “_”","Use at most one “_”","Usa como máximo un “_”"],["Nome válido ✓","Valid name ✓","Nombre válido ✓"],["Esse já é o seu nome","That's already your name","Ese ya es tu nombre"],["Nome salvo só neste aparelho (servidor offline)","Name saved on this device only (server offline)","Nombre guardado solo en este dispositivo (servidor sin conexión)"],["Nome alterado!","Name changed!","¡Nombre cambiado!"],["Já existe alguém com esse nome","Someone already has that name","Ya existe alguien con ese nombre"],["Verificando...","Checking...","Verificando..."],["Não foi possível carregar o 3D. Verifique a internet.","Could not load 3D. Check your connection.","No se pudo cargar el 3D. Revisa tu conexión."],["V-Bucks insuficientes","Not enough V-Bucks","V-Bucks insuficientes"],["Comprado e equipado!","Purchased and equipped!","¡Comprado y equipado!"],["Estilo comprado e equipado!","Style purchased and equipped!","¡Estilo comprado y equipado!"],["Nome atualizado","Name updated","Nombre actualizado"],["Escolha uma imagem","Choose an image","Elige una imagen"],["Foto atualizada","Photo updated","Foto actualizada"],["Imagem inválida","Invalid image","Imagen inválida"],["Copiado!","Copied!","¡Copiado!"],["Código inválido","Invalid code","Código inválido"],["Esse é o seu código","That's your own code","Ese es tu propio código"],["Já adicionado","Already added","Ya añadido"],["Amigo adicionado!","Friend added!","¡Amigo añadido!"],["Otimizado: modo leve","Optimized: light mode","Optimizado: modo ligero"],["Otimizado: qualidade alta","Optimized: high quality","Optimizado: calidad alta"],["Progresso recuperado","Progress recovered","Progreso recuperado"],["Equipado","Equipped","Equipado"],["Equipar","Equip","Equipar"],["Seu","Owned","Tuyo"],["Estilos (cores)","Styles (colors)","Estilos (colores)"],[" · prévia"," · preview"," · vista previa"],["Depois de comprar, você libera estilos de cor extras por","After buying, you can unlock extra color styles for","Tras comprar, desbloqueas estilos de color extra por"],[" cada."," each."," cada uno."],["Estilo extra: só muda as cores.","Extra style: only changes the colors.","Estilo extra: solo cambia los colores."],["Comprar estilo","Buy style","Comprar estilo"],["Comprar","Buy","Comprar"],["Você ainda não tem itens aqui. Compre na Loja.","You don't have any items here yet. Buy some in the Shop.","Aún no tienes artículos aquí. Compra en la Tienda."],["Marreta","Hammer","Martillo"],["Personagem","Character","Personaje"],["Mochila","Backpack","Mochila"],["Recruta","Recruit","Recluta"],["Marreta Comum","Common Hammer","Martillo común"],["Marreta Trovão","Thunder Hammer","Martillo Trueno"],["Marreta Magma","Magma Hammer","Martillo Magma"],["Sem mochila","No backpack","Sin mochila"],["Mochila Simples","Simple Backpack","Mochila simple"],["Mochila Tática","Tactical Backpack","Mochila táctica"],["Mochila Estelar","Star Backpack","Mochila estelar"],["Visual inicial, grátis.","Starter look, free.","Aspecto inicial, gratis."],["Ferramenta inicial.","Starter tool.","Herramienta inicial."],["Skin detalhada:","Detailed skin:","Skin detallada:"],["soldado de elite com colete, capacete, luvas e joelheiras.","elite soldier with vest, helmet, gloves and knee pads.","soldado de élite con chaleco, casco, guantes y rodilleras."],["piloto ousada com jaqueta, óculos de voo e cachecol.","bold pilot with jacket, flight goggles and scarf.","piloto atrevida con chaqueta, gafas de vuelo y bufanda."],["Marreta clássica, simples e barata. Estilos extras são só cores.","Classic hammer, simple and cheap. Extra styles are just colors.","Martillo clásico, simple y barato. Los estilos extra son solo colores."],["martelo de guerra hexagonal com ponta de picareta e cristal.","hexagonal war hammer with pickaxe tip and crystal.","martillo de guerra hexagonal con punta de pico y cristal."],["Mochila básica. Já vem com você, grátis.","Basic backpack. Comes with you, free.","Mochila básica. Ya viene contigo, gratis."],["Aba, bolso traseiro, bolsas laterais e rolo de dormir.","Flap, rear pocket, side pouches and sleeping roll.","Solapa, bolsillo trasero, bolsas laterales y rollo para dormir."],["mochila arredondada de jato, com aletas e propulsores.","rounded jet backpack with fins and thrusters.","mochila redonda de propulsión con aletas y propulsores."],["Patrulha","Patrol","Patrulla"],["Piloto","Pilot","Piloto"],["Relâmpago","Lightning","Relámpago"],["Tempestade","Storm","Tormenta"],["Gelo Negro","Black Ice","Hielo negro"],["Floresta","Forest","Bosque"],["Noturna","Night","Nocturna"],["Rosa","Pink","Rosa"],["Ciano","Cyan","Cian"],["Duplas","Duos","Dúos"],["Dupla","Duo","Dúo"],["Squad","Squad","Escuadrón"],["Formação automática","Auto-fill team","Formación automática"],["Formando equipe","Forming team","Formando equipo"],["Jogue sozinho contra duplas","Play solo against duos","Juega solo contra dúos"],[" · sozinho contra duplas"," · solo against duos"," · solo contra dúos"],[" · equipe incompleta"," · incomplete team"," · equipo incompleto"],["Esquadrão","Squad","Escuadrón"],["jogadores","players","jugadores"],["jogador","player","jugador"],["duplas","duos","dúos"],["esquadrões","squads","escuadrones"],["cada um por si","free-for-all","todos contra todos"],["jogue com 1 amigo","play with 1 friend","juega con 1 amigo"],["trabalhe em equipe","teamwork","trabajo en equipo"],["Último sobrevivente vence","Last one standing wins","Gana el último en pie"],["Mata-mata","Deathmatch","Combate a muerte"],["Respawn infinito · vence quem eliminar mais","Infinite respawn · most eliminations wins","Reaparición infinita · gana quien elimine más"],["Duelo direto, um contra um","Direct duel, one on one","Duelo directo, uno contra uno"],["Duelo · 1 contra 1, sem equipes","Duel · 1 vs 1, no teams","Duelo · 1 contra 1, sin equipos"],["Acenando","Waving","Saludando"],["Palmas","Clapping","Aplausos"],["Box","Boxing","Boxeo"],["Rebolar","Twerk","Menear"],["Risada","Laughing","Risa"]];
 let LANG=S.lang||((navigator.language||"pt").slice(0,2)); if(!["pt","en","es"].includes(LANG)) LANG="pt";
 const MAPS={en:{},es:{}}, RES={};
 [["Comprado!","Purchased!","¡Comprado!"],["Usar agora","Use now","Usar ahora"],["Compre esse emote na Loja","Buy this emote in the Shop","Compra este emote en la Tienda"],
