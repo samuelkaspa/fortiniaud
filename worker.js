@@ -368,6 +368,7 @@ function createGame(ctx, env) {
     "POST /api/admin/players": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
       const players = Object.keys(live).filter(isOnline).map(k => ({ code: k, name: nameOf(k), lvl: lvlOf(k), adm: isAdm(k), ver: !!db.verified[k], me: k === c }));
       return [200, { players, owner: !!admSess[c].owner }];
     },
@@ -393,6 +394,33 @@ function createGame(ctx, env) {
       emit(t, { t: "ver", on });
       return [200, { ok: true, name: nameOf(t), on }];
     },
+    /* expulsar = apagar a conta e todos os dados do jogador (só o dono) */
+    "POST /api/admin/kick": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
+      const t = b.code;
+      if (!codeOk(t)) return [400, { error: "Código inválido" }];
+      if (t === c) return [400, { error: "Você não pode expulsar a si mesmo" }];
+      const a = acctByCode(t);
+      if (!a && !isOnline(t) && !db.profiles[t]) return [404, { error: "Jogador não encontrado" }];
+      const name = nameOf(t);
+      emit(t, { t: "kick" });
+      leaveParty(t);
+      if (a) { delete db.accounts[a.id]; for (const k of Object.keys(db.sessions)) if (db.sessions[k].id === a.id) delete db.sessions[k]; P("a:" + a.id, "sessions"); }
+      for (const k of Object.keys(db.names)) if (db.names[k] === t) delete db.names[k];
+      const hadFriends = db.friends[t] || [], hadReq = [];
+      delete db.friends[t]; delete db.reqs[t];
+      for (const k of Object.keys(db.friends)) if (db.friends[k].includes(t)) db.friends[k] = db.friends[k].filter(x => x !== t);
+      for (const k of Object.keys(db.reqs)) if (db.reqs[k].includes(t)) { db.reqs[k] = db.reqs[k].filter(x => x !== t); hadReq.push(k); }
+      delete db.profiles[t]; delete db.guests[t]; delete db.admins[t]; delete db.verified[t];
+      delete admSess[t]; delete admPend[t]; delete invites[t];
+      P("names", "friends", "reqs", "profiles", "guests", "admins", "verified");
+      for (const sid of Object.keys(sids)) if (sids[sid].code === t) delete sids[sid];
+      delete live[t];
+      hadFriends.forEach(pushFriends); hadReq.forEach(pushReqs);
+      return [200, { ok: true, name }];
+    },
     "POST /api/admin/gift": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
@@ -407,6 +435,7 @@ function createGame(ctx, env) {
     "POST /api/admin/grant": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
+      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
       const t = b.code;
       if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
       if (isAdm(t)) return [409, { error: "Esse jogador já é ADM" }];
