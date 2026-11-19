@@ -1959,7 +1959,7 @@ function gFree(g,dt,H){
   if(g.emo&&!g.emo.on&&g.hw<=.02){ g.emo.on=true; g.emo.t0=performance.now(); }
   if(g.emo&&g.emo.on&&(performance.now()-g.emo.t0)/1000>=g.emo.dur) gEmoStop(g);
   g.ew+=clamp((g.emo&&g.emo.on?1:0)-g.ew,-dt/.3,dt/.1); { const ed=g.emo||g.emoOut; if(ed&&g.ew>0) emoApply(g.hero,ed.d.pose((performance.now()-ed.t0)/1000),g.ew); else g.emoOut=null; }
-  g.dw+=clamp((g.dn?1:0)-g.dw,-dt/.4,dt/.45); if(g.dw>.002) emoApply(g.hero,DOWNP(performance.now()/1000,Math.min(1,sp/.85)),g.dw); /* caído no chão */
+  g.dw+=clamp((g.dn?1:0)-g.dw,-dt/.4,dt/(g.elim?.6:.45)); if(g.dw>.002) emoApply(g.hero,DOWNP(performance.now()/1000,Math.min(1,sp/.85)),g.dw); /* caído no chão */
   { const nT=performance.now(), can=!!g.hold&&!g.emo&&g.ew<=.001&&g.hw>=.95&&!run&&g.hp>0&&!g.dn&&!g.elim&&!g.rvg&&!g.slide;
     if(g.ad&&g.hcap&&!g.ad.el.hasPointerCapture(g.ad.id)){ g.ad=null; hitSet("btn",false); } /* dedo saiu/sistema cancelou: nunca fica preso */
     if(!g.swing&&g.hitHeld&&can){ g.swing={t0:nT,i:0}; g.sww=0; }
@@ -1976,7 +1976,7 @@ function gFree(g,dt,H){
     if(Math.abs(g.aimX)>.003||Math.abs(g.aimZ)>.003) chestAim(g.hero,g.aimX,g.aimZ); }
   if(g.bpl>0){ chestAim(g.hero,.3*Math.sin((1-g.bpl/.35)*Math.PI),0); g.bpl-=dt; } g.tilt.rotation.set(g.an.tp*(1-g.dw)+1.4*g.dw,0,g.an.tr*(1-g.dw)); g.tilt.position.y=-.4*g.dw; gStateStep(g,dt,performance.now()); if(g.imps&&g.imps.length) impApply(g.hero,g.tilt,g.imps,performance.now());
   g.rig.position.set(h.x,h.y+.93,h.z); g.rig.rotation.y=g.ry;
-  g.wd=7; g.ty+=((g.dn?.75:want?1.15:1.5)-g.ty)*K(5); return V(h.x,(h.y-g.fy)*.55+g.fy+g.ty,h.z); }
+  g.wd=7; g.ty+=((g.dn?.75:want?1.15:1.5)-g.ty)*K(5); return V(h.x,h.y-Math.min((h.y-g.fy)*.45,.75)+g.ty,h.z); } /* câmera acompanha o pulo suave (até .75 m de atraso) mas segue a queda inteira, sem deixar o personagem sair da tela */
 /* sincronização: envia só estado compacto (10 Hz, só se mudou; batimento a cada 1 s) e interpola os outros jogadores */
 function gNet(g,dt){ if(!MP.on||!MP.party||MP.party.members.length<2) return; g.netT-=dt; if(g.netT>0) return; g.netT=.1;
   const h=g.pos, f=(g.air?1:0)|(g.crouching?2:0)|(g.running?4:0)|(g.braking?8:0)|(g.hold&&!g.bm&&!(g.pw>.02)&&!g.emo&&g.ew<=.001?16:0)|(g.emo?32:0)|(g.swWant?64:0)|(g.slide?128:0), n=v=>+v.toFixed(2), q=[n(h.x),n(h.y),n(h.z),n(g.ry),+Math.hypot(g.vx,g.vz).toFixed(1),f], key=q.join(), now=performance.now();
@@ -2000,7 +2000,7 @@ function gRemotes(g,dt,now){ const K=a=>1-Math.exp(-dt*a);
     if(R.emo&&!R.emo.on&&R.hw<=.02){ R.emo.on=true; R.emo.t0=now; }
     if(R.emo&&((now-R.emo.t0>700&&!(R.f&32))||(R.emo.on&&now-R.emo.t0>R.emo.dur*1000))){ R.emoOut=R.emo; R.emo=null; }
     R.ew+=clamp((R.emo&&R.emo.on?1:0)-R.ew,-dt/.3,dt/.1); { const ed=R.emo||R.emoOut; if(ed&&R.ew>0) emoApply(R.mdl,ed.d.pose((now-ed.t0)/1000),R.ew); else R.emoOut=null; }
-    { const dn=R.st!=="n"?1:0; R.dw+=clamp(dn-R.dw,-dt/.4,dt/.45); if(R.dw>.002) emoApply(R.mdl,DOWNP(now/1000,Math.min(1,R.sp/.85)),R.dw); }
+    { const dn=R.st!=="n"?1:0; R.dw+=clamp(dn-R.dw,-dt/.4,dt/(R.st==="x"?.6:.45)); if(R.dw>.002) emoApply(R.mdl,DOWNP(now/1000,Math.min(1,R.sp/.85)),R.dw); }
     { const sb=!!(R.f&64)&&R.hw>.9; if(sb&&!R.sw){ R.sw={t0:now}; R.sww=0; }
       if(R.sw){ let st=(now-R.sw.t0)/1000*SW_SPD; R.sww+=clamp((sb?1:0)-R.sww,-dt/.12,dt/.09);
         while(R.sw&&st>=SW_T){ if(sb){ R.sw.t0+=SW_T*1000/SW_SPD; st-=SW_T; } else R.sw=null; }
@@ -2206,7 +2206,7 @@ function elimStart(g,self,R){
 function fxKill(g,fx){ g.scene.remove(fx.ship,fx.cubes); fx.ship.traverse(disp); fx.cubes.geometry.dispose(); fx.cubes.material.dispose(); fx.cubes.dispose(); if(fx.A.elimFx===fx) fx.A.elimFx=null; const i=g.fxs.indexOf(fx); if(i>=0) g.fxs.splice(i,1); }
 function elimEnd(A,self){ const g=GAME; if(A.elimFx&&g) fxKill(g,A.elimFx); A.rig.visible=true; A.dw=0; A.hw=0; A.tilt.position.y=0; if(self){ g.elim=null; g.dn=false; } }
 function fxStep(g,fx,now,dt){
-  const A=fx.A, T=(now-fx.t0)/2000, sh=fx.ship; /* metade da velocidade: dura ~9 s */ if(fx.self) fx.tg.copy(g.pos); else fx.tg.set(A.x,A.y,A.z);
+  const A=fx.A, T=Math.max(0,now-fx.t0-1300)/1000, sh=fx.ship; /* 1,3 s deitado no chão, depois a nave chega e suga (~4,5 s) */ if(fx.self) fx.tg.copy(g.pos); else fx.tg.set(A.x,A.y,A.z);
   const hov=fx.hov.set(fx.tg.x,fx.tg.y+5.2,fx.tg.z), u=smooth01(T/1.1), out=T>3.85?smooth01((T-3.85)/.5):0; /* 0–1,1 nave chega e se posiciona sobre o personagem */
   sh.position.lerpVectors(fx.st0,hov,u); sh.position.y+=Math.sin(T*7)*.1*(1-u)+out*out*14; sh.rotation.z=(1-u)*.45*Math.sin(T*3); sh.rotation.x=(1-u)*.2;
   sh.scale.setScalar(Math.max(.001,smooth01(T/.4)*(1-out))); fx.ring.rotation.z+=dt*4; fx.lights.forEach((l,i)=>{ l.material.emissiveIntensity=Math.sin(T*10+i*1.2)>0?2.5:.4; });
@@ -2428,10 +2428,11 @@ function gEditApply(g){ if(!g||!g.bm||g.bsel!==5||g.phase!=="free"||g.dn||g.elim
   if(hs.every(v=>v)){ g.edT=null; return bDestroy(g,t,true); }
   t.holes=hs.some(v=>v)?hs:null; bWallRebuild(g,t); }
 /* dano de queda: quanto mais alto, mais dano (nunca mata, deixa 1 de vida) */
-function gFallHit(g,d){ if(g.dn||g.elim||g.hp<=0) return; const dmg=Math.round((d-4)*7); if(dmg<=0) return;
+const FALL_FLOORS=2, FALL_DMG=7; /* começa a dar dano depois de FALL_FLOORS andares (1 andar = BH = 4 m) · FALL_DMG = dano por metro acima disso */
+function gFallHit(g,d){ if(g.dn||g.elim||g.hp<=0) return; const dmg=Math.round((d-FALL_FLOORS*BH)*FALL_DMG); if(dmg<=0) return;
   if(dmg>=g.hp+(g.shld||0)){ /* queda fatal: morre (animação de eliminação) e reaparece no ponto inicial depois de alguns segundos */
-    toast("Você morreu de queda!"); gHpSet(0); gMeSt(g,"x",0); g.landK=1; g.landT=.5; g.vx=g.vz=0;
-    setTimeout(()=>{ if(GAME!==g||g.st!=="x") return; g.pos.set(0,0,0); g.vx=g.vz=g.vy=0; g.air=false; g.ftop=0; g.inTri=null; g.stTri=null; gMeSt(g,"n",g.hpMax); },7000); return; }
+    toast("Você morreu de queda!"); g.fallDead=true; gHpSet(0); gMeSt(g,"x",0); g.landK=1; g.landT=.5; g.vx=g.vz=0;
+    setTimeout(()=>{ if(GAME!==g||g.st!=="x") return; g.fallDead=false; g.pos.set(0,0,0); g.vx=g.vz=g.vy=0; g.air=false; g.ftop=0; g.inTri=null; g.stTri=null; gMeSt(g,"n",g.hpMax); },6500); return; }
   shDamage(g,dmg); toast("Dano de queda -"+dmg); if(!g.imps) g.imps=[]; impStart(g,g.ry,{k:2,x:0,z:1}); g.landK=1; g.landT=.5; }
 
 function startTraining(){
@@ -2800,22 +2801,22 @@ const RC=["#b8c0cc","#4cd964","#3aa0ff","#b05cff","#ffb020"], RCI=[0xb8c0cc,0x4c
 const AM=[{n:"Padrão",c:0xffd86b,h:"#ffd86b",d:1},{n:"Perfurante",c:0x7fe7ff,h:"#7fe7ff",d:1.35},{n:"Incendiária",c:0xff7a2a,h:"#ff7a2a",d:1.15}];
 const CL={pistol:{n:"9mm",box:24},rifle:{n:"5.56",box:30},shotgun:{n:"Cal. 12",box:8},sniper:{n:".50",box:5}};
 const WD=[
-{id:"p9",sh:"P9",n:"Pistola P9",cls:"pistol",dmg:12,rpm:380,mag:12,spr:.012,pel:1,w:.12,auto:0,zoom:52,tip:.3,g2:[-.02,-.07,.1],wt:3},
-{id:"mag",sh:"MG",n:"Revólver Magnum",cls:"pistol",dmg:30,rpm:150,mag:6,spr:.008,pel:1,w:.3,auto:0,zoom:50,tip:.34,g2:[-.02,-.07,.1],wt:2},
-{id:"mp",sh:"MP",n:"Pistola Rajada",cls:"pistol",dmg:7,rpm:720,mag:20,spr:.03,pel:1,w:.2,auto:1,zoom:52,tip:.3,g2:[-.02,-.07,.1],wt:2},
-{id:"ar",sh:"AR",n:"Fuzil AR-15",cls:"rifle",dmg:13,rpm:700,mag:30,spr:.02,pel:1,w:.55,auto:1,zoom:44,tip:.8,g2:[-.02,-.05,.3],wt:3},
-{id:"tac",sh:"TX",n:"Fuzil Tático",cls:"rifle",dmg:21,rpm:330,mag:20,spr:.012,pel:1,w:.6,auto:0,zoom:40,tip:.82,g2:[-.02,-.05,.3],wt:2},
-{id:"lmg",sh:"LM",n:"Fuzil Pesado",cls:"rifle",dmg:16,rpm:520,mag:40,spr:.028,pel:1,w:.85,auto:1,zoom:46,tip:.84,g2:[-.02,-.05,.3],wt:1.5},
-{id:"pump",sh:"PU",n:"Escopeta Pump",cls:"shotgun",dmg:6,rpm:70,mag:6,spr:.07,pel:8,w:.7,auto:0,zoom:50,tip:.86,g2:[-.02,-.05,.32],wt:2},
-{id:"a12",sh:"A12",n:"Auto-12",cls:"shotgun",dmg:4,rpm:220,mag:8,spr:.085,pel:6,w:.75,auto:1,zoom:50,tip:.84,g2:[-.02,-.05,.32],wt:1.5},
-{id:"snp",sh:"SN",n:"Sniper Bolt",cls:"sniper",dmg:62,rpm:48,mag:5,spr:.002,pel:1,w:1,auto:0,zoom:20,tip:1.12,g2:[-.02,-.05,.3],wt:.8}];
+{id:"p9",sh:"P9",n:"Pistola P9",cls:"pistol",dmg:15,rpm:380,mag:15,spr:.012,pel:1,w:.12,auto:0,zoom:52,tip:.3,g2:[-.02,-.07,.1],wt:3},
+{id:"mag",sh:"MG",n:"Revólver Magnum",cls:"pistol",dmg:38,rpm:150,mag:6,spr:.008,pel:1,w:.3,auto:0,zoom:50,tip:.34,g2:[-.02,-.07,.1],wt:2},
+{id:"mp",sh:"MP",n:"Pistola Rajada",cls:"pistol",dmg:9,rpm:720,mag:20,spr:0.025,pel:1,w:.2,auto:1,zoom:52,tip:.3,g2:[-.02,-.07,.1],wt:2},
+{id:"ar",sh:"AR",n:"Fuzil AR-15",cls:"rifle",dmg:16,rpm:700,mag:30,spr:.02,pel:1,w:.55,auto:1,zoom:44,tip:.8,g2:[-.02,-.05,.3],wt:3},
+{id:"tac",sh:"TX",n:"Fuzil Tático",cls:"rifle",dmg:25,rpm:330,mag:20,spr:.012,pel:1,w:.6,auto:0,zoom:40,tip:.82,g2:[-.02,-.05,.3],wt:2},
+{id:"lmg",sh:"LM",n:"Fuzil Pesado",cls:"rifle",dmg:19,rpm:520,mag:40,spr:0.024,pel:1,w:.85,auto:1,zoom:46,tip:.84,g2:[-.02,-.05,.3],wt:1.5},
+{id:"pump",sh:"PU",n:"Escopeta Pump",cls:"shotgun",dmg:8,rpm:70,mag:6,spr:.07,pel:8,w:.7,auto:0,zoom:50,tip:.86,g2:[-.02,-.05,.32],wt:2},
+{id:"a12",sh:"A12",n:"Auto-12",cls:"shotgun",dmg:5,rpm:220,mag:8,spr:.085,pel:6,w:.75,auto:1,zoom:50,tip:.84,g2:[-.02,-.05,.32],wt:1.5},
+{id:"snp",sh:"SN",n:"Sniper Bolt",cls:"sniper",dmg:75,rpm:55,mag:5,spr:.002,pel:1,w:1,auto:0,zoom:20,tip:1.12,g2:[-.02,-.05,.3],wt:.8}];
 /* cada arma usa UMA munição própria: 0 padrão · 1 perfurante · 2 incendiária (não dá para trocar) */
 const AV={p9:0,mag:1,mp:0,ar:0,tac:1,lmg:2,pump:0,a12:2,snp:1}; WD.forEach(d=>{ d.v=AV[d.id]||0; });
 const sm=x=>x<=0?0:x>=1?1:x*x*(3-2*x), bump=(u,a,b,c)=>sm((u-a)/(b-a))-sm((u-b)/(c-b)), lerp=(a,b,t)=>a+(b-a)*t, rnd=(a,b)=>a+Math.random()*(b-a), cl=(x,a,b)=>Math.max(a,Math.min(b,x));
 const cur=g=>{ const it=g&&g.inv&&g.inv[g.slot]; return it&&it.w||null; };
 
 /* ---------- dano de queda: só depois de ~2 andares (8 m) ---------- */
-const _fh=gFallHit; gFallHit=function(g,d){ if(d<=8) return; _fh(g,d-4); }; /* original: (d-4)*7 → agora começa em 8 */
+/* (o limite de 2 andares agora fica direto em gFallHit: FALL_FLOORS / FALL_DMG) */
 
 /* ---------- modelos ---------- */
 const UB=new THREE.BoxGeometry(1,1,1), UC=new THREE.CylinderGeometry(1,1,1,10);
@@ -3115,10 +3116,10 @@ function mkUI(wp){ if(document.getElementById("wpUI")){ wp.el={pr:wpPr,hud:wpHud
     if(a==="pick"){ wp.eHeld=!act(g); if(wp.hd) wp.eHeld=true; } else if(a==="aim"){ wp.aimT=!wp.aimT; b.classList.toggle("on",wp.aimT); } else if(a==="rl") reload(g); else if(a==="drop"&&g.slot>0) dropS(g,g.slot); });
   bt.addEventListener("pointerup",rel); bt.addEventListener("pointercancel",rel); }
 /* ---------- ESCUDO: barra extra (máx. 100) que absorve o dano antes da vida ---------- */
-function shDamage(g,d){ const a=Math.min(g.shld||0,d); g.shld=(g.shld||0)-a; gHpSet(g.hp-(d-a)); hudHp(); }
+function shDamage(g,d){ const a=Math.min(g.shld||0,d); g.shld=(g.shld||0)-a; gHpSet(g.hp-(d-a)); hudHp(); } window.shDamage=shDamage; /* global: o dano de queda (script 1) precisa enxergar esta função */
 function gHpSrv(v){ const g=GAME; if(!g) return; v=clamp(Math.round(v),0,g.hpMax); if(g.srvLast===undefined) g.srvLast=g.hp; const d=g.srvLast-v; g.srvLast=v;
   if(v<=0){ g.shld=0; return gHpSet(0); } if(d>0) return shDamage(g,d); if(d<0) gHpSet(Math.min(g.hpMax,g.hp-d)); } /* o servidor manda a vida total: só a QUEDA vira dano (o escudo absorve primeiro) */
-const _gMeSt=gMeSt; gMeSt=function(g,st,hp,dh){ if(st==="n"&&(g.st||"n")==="n"&&hp!==undefined){ gHpSrv(hp); return; } if(st!=="n") g.shld=0; const r=_gMeSt.apply(this,arguments); if(st==="n") g.srvLast=g.hp; return r; };
+const _gMeSt=gMeSt; gMeSt=function(g,st,hp,dh){ if(st==="n"&&g.fallDead) return; if(st==="n"&&(g.st||"n")==="n"&&hp!==undefined){ gHpSrv(hp); return; } if(st!=="n") g.shld=0; const r=_gMeSt.apply(this,arguments); if(st==="n") g.srvLast=g.hp; return r; };
 const _hudHp=hudHp; hudHp=function(){ _hudHp(); const g=GAME; if(!g) return; const sb=document.querySelector("#gHp .shbar"); if(!sb) return; const v=Math.round(g.shld||0); sb.classList.toggle("on",v>0&&!g.dn); sb.querySelector(".fill").style.transform="scaleX("+clamp(v/100,0,1)+")"; sb.querySelector("b").textContent=v; };
 /* ---------- POÇÃO NA MÃO: aparece na mão direita e, ao segurar, sobe até a boca e o personagem bebe ---------- */
 function potion(g,wp,dt){ const P=g.hero&&g.hero.userData; if(!P||!P.chest||!P.arms||!P.arms[1]) return;
@@ -3156,7 +3157,7 @@ function init(g){ const wp=g.wp={chests:[],loot:[],cw:null,eq:0,aim:0,rd:0,rec:0
   mkUI(wp); initFx(g,wp); const H=MAP_DEF.size/2*.92, pts=[];
   const free=(x,z,m)=>pts.every(p=>Math.hypot(p[0]-x,p[1]-z)>m)&&!(g.veg||[]).some(o=>o&&o.position&&Math.hypot(o.position.x-x,o.position.z-z)<3);
   const add=(am,n,rr)=>{ for(let i=0,t=0;i<n&&t<n*20;t++){ const a=Math.random()*6.28, r=rr?Math.sqrt(Math.random())*rr:(Math.random()*2-1)*H, x=rr?Math.cos(a)*r:r, z=rr?Math.sin(a)*r:(Math.random()*2-1)*H; if(!free(x,z,9)) continue; pts.push([x,z]); mkChest(g,wp,x,z,am); i++; } };
-  add(false,8,45); add(false,98,0); add(true,30,0); } /* 25% menos baús */
+  add(false,6,45); add(false,74,0); add(true,23,0); } /* mais 25% menos baús (era 8 / 98 / 30) */
 addEventListener("keydown",e=>{ const g=GAME; if(!g||!g.wp||g.phase!=="free"||g.lobby||e.ctrlKey||e.metaKey||e.altKey||e.repeat) return; const k=e.key.toLowerCase(); let u=false;
   if(k==="e"){ const had=!!act(g); g.wp.eHeld=!had||!!g.wp.hd; u=had||(g.inv[g.slot]&&(g.inv[g.slot].id==="med"||g.inv[g.slot].id==="shd")); } else if(k==="r"&&cur(g)){ reload(g); u=true; } else if(k==="g"&&g.slot>0&&g.inv[g.slot]){ dropS(g,g.slot); u=true; } else if(k==="t"&&cur(g)){ cycle(g); u=true; }
   if(u){ e.preventDefault(); e.stopImmediatePropagation(); } },true);
