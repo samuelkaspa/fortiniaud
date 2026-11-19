@@ -335,6 +335,7 @@ function createGame(ctx, env) {
   }
   mproutes["POST /api/mp/spawn"] = async b => {
     const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+    resetCb(c);
     if (!b.lobby) { lobbyLeave(c); return [200, { ok: true }]; }
     const p = parties[partyOf[c]];
     if (!p || p.members.length < 2) return [200, { ok: true }]; /* solo: o cliente conta sozinho */
@@ -348,15 +349,104 @@ function createGame(ctx, env) {
     const left = Math.max(0, L.end - Date.now());
     return [200, { ok: true, lob: L.went ? { left: 0, a: L.a, off: L.off } : { left } }];
   };
+  /* ---------- Combate: vida, derrubado, reviver, drops e canal de eventos (o servidor decide) ---------- */
+  const HP_MAX = 200, DOWN_HP = 100, BLEED = 10, REV_MS = 5000, REV_R = 3.4, RESPAWN_MS = 8000, MELEE_R = 3.6, MELEE_D = 20;
+  const party = c => parties[partyOf[c]] || null;
+  const cast = (c, msg, all) => { const p = party(c); if (p) p.members.forEach(m => { if (all || m !== c) emit(m, msg); }); };
+  const cs = c => { const l = live[c]; return l ? (l.cb || (l.cb = { hp: HP_MAX, st: "n", dh: 0, dt: 0, x: 0, y: 0, z: 0, r: 0, rb: null, rv: null, rx: 0, rz: 0, tm: null, rtm: null, tok: 40, tt: Date.now(), et: 80, ett: Date.now() })) : null; };
+  const curDh = s => (s.st === "d" && !s.rb ? Math.max(0, s.dh - BLEED * (Date.now() - s.dt) / 1000) : s.dh);
+  const stOf = s => (s.st === "d" && s.rb ? "r" : s.st);
+  function resetCb(c) { const s = cs(c); if (!s) return; clearTimeout(s.tm); clearTimeout(s.rtm); if (s.rv) stopRev(c, "cancel"); Object.assign(s, { hp: HP_MAX, st: "n", dh: 0, rb: null, rv: null, tm: null, rtm: null }); }
+  function armBleed(v) { const s = cs(v); clearTimeout(s.tm); s.tm = setTimeout(() => kill(v), Math.max(50, s.dh / BLEED * 1000)); }
+  function kill(v) {
+    const s = cs(v); if (!s || s.st === "x") return; clearTimeout(s.tm);
+    if (s.rb) stopRev(s.rb, "elim"); s.st = "x"; s.hp = 0; s.dh = 0; s.rb = null;
+    cast(v, { t: "st", code: v, st: "x", hp: 0, dh: 0 }, true);
+    s.tm = setTimeout(() => respawn(v), RESPAWN_MS);
+  }
+  function respawn(v) { const s = cs(v); if (!s || s.st !== "x") return; s.st = "n"; s.hp = HP_MAX; s.dh = 0; cast(v, { t: "st", code: v, st: "n", hp: HP_MAX, dh: 0 }, true); }
+  function stopRev(rc, why) {
+    const r = cs(rc); if (!r || !r.rv) return; const v = r.rv, vs = cs(v); clearTimeout(r.rtm); r.rv = null;
+    if (vs && vs.rb === rc) { vs.rb = null; if (vs.st === "d") { vs.dt = Date.now(); armBleed(v); } }
+    cast(rc, { t: "rv", by: rc, v, on: 0, why }, true);
+  }
+  function hurt(v, d, a, head, dx, dz) {
+    const s = cs(v); if (!s || s.st === "x") return;
+    if (s.rb) stopRev(s.rb, "dmg"); if (s.rv) stopRev(v, "dmg");
+    if (s.st === "n") { s.hp = Math.max(0, s.hp - d); if (s.hp <= 0) { s.st = "d"; s.dh = DOWN_HP; s.dt = Date.now(); armBleed(v); } }
+    else { s.dh = Math.max(0, curDh(s) - d); s.dt = Date.now(); if (s.dh <= 0) { s.hp = 0; } else armBleed(v); }
+    const dead = s.st === "d" && s.dh <= 0;
+    cast(a, { t: "hit", e: rnd(5), a, v, d, h: head ? 1 : 0, hp: s.hp, st: dead ? "x" : s.st, dh: Math.round(s.dh), x: dx, z: dz, k: (Math.random() * 3) | 0 }, true);
+    if (dead) kill(v);
+  }
   mproutes["POST /api/mp/pos"] = async b => {
-    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-    const p = parties[partyOf[c]]; if (!p) return [200, { ok: true }];
-    const m = { t: "pos", code: c, x: num(b.x), y: num(b.y), z: num(b.z), r: num(b.r), s: num(b.s), f: num(b.f) | 0 };
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), p = party(c); if (!s) return [200, { ok: true }];
+    s.x = num(b.x); s.y = num(b.y); s.z = num(b.z); s.r = num(b.r);
+    if (s.rv) { const vs = cs(s.rv); if (Math.hypot(s.x - s.rx, s.z - s.rz) > 1) stopRev(c, "move"); else if (vs && Math.hypot(vs.x - s.x, vs.z - s.z) > REV_R + 1.5) stopRev(c, "far"); }
+    const me = { ok: true, st: stOf(s), hp: s.hp, dh: Math.round(curDh(s)) };
+    if (!p) return [200, me];
+    const m = { t: "pos", code: c, x: s.x, y: s.y, z: s.z, r: s.r, s: num(b.s), f: num(b.f) | 0, hp: s.hp, st: stOf(s), dh: me.dh, rv: s.rv ? 1 : 0 };
     p.members.forEach(x => { if (x !== c) emit(x, m); });
+    return [200, me];
+  };
+  mproutes["POST /api/mp/hit"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), p = party(c); if (!s || !p || s.st !== "n") return [200, { ok: true }];
+    const now = Date.now(); s.tok = Math.min(40, s.tok + (now - s.tt) / 1000 * 30); s.tt = now; if (s.tok < 1) return [429, { error: "Calma!" }]; s.tok--;
+    let v = null, d = 0, head = false;
+    if (b.v !== undefined) { /* tiro: o cliente informa quem a bala atingiu; o servidor confere grupo, estado, distância e limita o dano */
+      v = String(b.v); const vs = p.members.includes(v) && v !== c ? cs(v) : null; if (!vs || vs.st === "x") return [200, { ok: true }];
+      if (Math.hypot(vs.x - s.x, vs.z - s.z) > 450 || Math.abs(vs.y - s.y) > 450) return [200, { ok: true }];
+      d = Math.min(250, Math.max(1, Math.round(num(b.d)))); head = !!b.h;
+    } else { /* golpe corpo a corpo: acha o alvo mais próximo à frente */
+      const yaw = num(b.yaw), fx = -Math.sin(yaw), fz = -Math.cos(yaw); let best = 1e9;
+      p.members.forEach(m => { if (m === c) return; const t = cs(m); if (!t || t.st === "x") return; const dx = t.x - s.x, dz = t.z - s.z, dist = Math.hypot(dx, dz); if (dist > MELEE_R || Math.abs(t.y - s.y) > 2.2) return; if (dist > .6 && (dx * fx + dz * fz) / dist < .25) return; if (dist < best) { best = dist; v = m; } });
+      if (!v) return [200, { ok: true }]; d = MELEE_D;
+    }
+    const t = cs(v), dx = t.x - s.x, dz = t.z - s.z, L = Math.hypot(dx, dz) || 1;
+    hurt(v, d, c, head, +(dx / L).toFixed(2), +(dz / L).toFixed(2)); return [200, { ok: true }];
+  };
+  mproutes["POST /api/mp/hp"] = async b => { /* vida própria: cura e dano de queda (o cliente calcula, o servidor limita) */
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c); if (!s) return [200, { ok: true }];
+    if (b.rs) { if (s.st === "x") { clearTimeout(s.tm); s.st = "n"; s.hp = HP_MAX; s.dh = 0; cast(c, { t: "st", code: c, st: "n", hp: HP_MAX, dh: 0 }, false); } return [200, { ok: true }]; }
+    if (s.st !== "n") return [200, { ok: true }]; const hp = Math.max(0, Math.min(HP_MAX, Math.round(num(b.hp))));
+    if (hp <= 0) { clearTimeout(s.tm); s.st = "x"; s.hp = 0; cast(c, { t: "st", code: c, st: "x", hp: 0, dh: 0 }, false); return [200, { ok: true }]; }
+    s.hp = Math.min(hp, s.hp + 100); cast(c, { t: "hp", code: c, hp: s.hp }, false); return [200, { ok: true, hp: s.hp }];
+  };
+  mproutes["POST /api/mp/revive"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c);
+    if (b.off) { stopRev(c, "cancel"); return [200, { ok: true }]; }
+    const p = party(c), v = String(b.t || ""), vs = p && p.members.includes(v) && v !== c ? cs(v) : null;
+    if (!s || s.st !== "n" || s.rv) return [200, { ok: false, error: "Não foi possível reviver" }];
+    if (!vs || vs.st !== "d") return [200, { ok: false, error: "O jogador não está derrubado" }];
+    if (vs.rb) return [200, { ok: false, error: "Alguém já está revivendo" }];
+    if (Math.hypot(vs.x - s.x, vs.z - s.z) > REV_R || Math.abs(vs.y - s.y) > 2.5) return [200, { ok: false, error: "Chegue mais perto" }];
+    clearTimeout(vs.tm); vs.dh = curDh(vs); vs.dt = Date.now(); vs.rb = c; s.rv = v; s.rx = s.x; s.rz = s.z;
+    cast(c, { t: "rv", by: c, v, on: 1, ms: REV_MS }, true);
+    s.rtm = setTimeout(() => { if (s.rv !== v || vs.rb !== c) return; s.rv = null; vs.rb = null; vs.st = "n"; vs.hp = 50; vs.dh = 0; cast(c, { t: "rv", by: c, v, on: 0, why: "done" }, true); cast(v, { t: "st", code: v, st: "n", hp: 50, dh: 0 }, true); }, REV_MS);
     return [200, { ok: true }];
   };
-  for (const k of ["hit", "drop", "pickup"]) mproutes["POST /api/mp/" + k] = async b => { const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; return [200, { ok: true }]; };
-  mproutes["POST /api/mp/revive"] = async b => { const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; return [200, { ok: false, error: "Indisponível" }]; };
+  const drops = {};
+  mproutes["POST /api/mp/drop"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), p = party(c); if (!s || !p || !Array.isArray(b.items)) return [200, { ok: true }];
+    const items = b.items.slice(0, 6).map(i => ({ id: String(i && i.id || "").slice(0, 16), n: String(i && i.n || "").slice(0, 40) })).filter(i => i.id); if (!items.length) return [200, { ok: true }];
+    const id = rnd(6); drops[id] = { p: p.id, x: s.x, y: s.y, z: s.z, items }; setTimeout(() => { delete drops[id]; }, 600000);
+    cast(c, { t: "drop", id, x: s.x, y: s.y, z: s.z, items }, true); return [200, { ok: true }];
+  };
+  mproutes["POST /api/mp/pickup"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), d = drops[String(b.id)], p = party(c);
+    if (!s || !d || !p || d.p !== p.id || s.st !== "n" || Math.hypot(d.x - s.x, d.z - s.z) > 3.2 || Math.abs(d.y - s.y) > 2.5) return [200, { ok: false }];
+    delete drops[String(b.id)]; cast(c, { t: "pick", id: String(b.id), by: c, items: d.items }, true); return [200, { ok: true }];
+  };
+  /* canal de eventos entre jogadores do grupo: armas na mão (w), tiros (s), recarga (rl) e construções (b+ bs b- bd) */
+  const EV_OK = new Set(["w", "s", "rl", "b+", "bs", "b-", "bd"]);
+  mproutes["POST /api/mp/ev"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c); if (!s || !party(c)) return [200, { ok: true }];
+    if (!EV_OK.has(b.k)) return [400, { error: "Evento inválido" }];
+    const now = Date.now(); s.et = Math.min(80, s.et + (now - s.ett) / 1000 * 90); s.ett = now; if (s.et < 1) return [429, { error: "Calma!" }]; s.et--;
+    const m = {}; for (const k of Object.keys(b)) if (k !== "sid") m[k] = b[k]; m.t = "ev"; m.code = c;
+    if (JSON.stringify(m).length > 24000) return [413, { error: "Grande demais" }];
+    cast(c, m, false); return [200, { ok: true }];
+  };
 
   Object.assign(routes, mproutes);
 
