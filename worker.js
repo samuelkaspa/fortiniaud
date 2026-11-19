@@ -212,7 +212,7 @@ function createGame(ctx, env) {
   const presence = c => (db.friends[c] || []).forEach(pushFriends);
 
   function leaveParty(c) {
-    const pid = partyOf[c], p = parties[pid]; if (!p) return; delete partyOf[c];
+    const pid = partyOf[c], p = parties[pid]; if (!p) return; delete partyOf[c]; if (typeof lobbyLeave === "function") lobbyLeave(c);
     p.members = p.members.filter(m => m !== c); emit(c, { t: "party", party: null });
     if (p.members.length <= 1) { p.members.forEach(m => { delete partyOf[m]; emit(m, { t: "party", party: null }); }); delete parties[pid]; }
     else pushParty(p);
@@ -320,6 +320,44 @@ function createGame(ctx, env) {
       return [200, { ok: true }];
     }
   };
+  /* ---------- Partida: lobby pré-jogo compartilhado, posições em tempo real ---------- */
+  const lobbies = {}, LOBBY_MS = 20000;
+  const num = v => (Number.isFinite(+v) ? +v : 0);
+  function lobbyGo(key) {
+    const L = lobbies[key]; if (!L || L.went) return;
+    L.went = Date.now();
+    L.m.forEach(m => emit(m, { t: "go", a: L.a, off: L.off }));
+    L.tm = setTimeout(() => { if (lobbies[key] === L) delete lobbies[key]; }, 60000);
+  }
+  function lobbyLeave(c) {
+    const l = live[c]; if (l) l.ing = false;
+    for (const k of Object.keys(lobbies)) { const L = lobbies[k]; if (L.m.delete(c) && !L.m.size && !L.went) { clearTimeout(L.tm); delete lobbies[k]; } }
+  }
+  mproutes["POST /api/mp/spawn"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+    if (!b.lobby) { lobbyLeave(c); return [200, { ok: true }]; }
+    const p = parties[partyOf[c]];
+    if (!p || p.members.length < 2) return [200, { ok: true }]; /* solo: o cliente conta sozinho */
+    let L = lobbies[p.id];
+    if (!L || (L.went && Date.now() - L.went > 30000)) {
+      if (L) clearTimeout(L.tm);
+      L = lobbies[p.id] = { m: new Set(), end: Date.now() + LOBBY_MS, went: 0, a: Math.random() * Math.PI * 2, off: (Math.random() - .5) * .6, tm: null };
+      L.tm = setTimeout(() => lobbyGo(p.id), LOBBY_MS);
+    }
+    L.m.add(c); if (live[c]) live[c].ing = true;
+    const left = Math.max(0, L.end - Date.now());
+    return [200, { ok: true, lob: L.went ? { left: 0, a: L.a, off: L.off } : { left } }];
+  };
+  mproutes["POST /api/mp/pos"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+    const p = parties[partyOf[c]]; if (!p) return [200, { ok: true }];
+    const m = { t: "pos", code: c, x: num(b.x), y: num(b.y), z: num(b.z), r: num(b.r), s: num(b.s), f: num(b.f) | 0 };
+    p.members.forEach(x => { if (x !== c) emit(x, m); });
+    return [200, { ok: true }];
+  };
+  for (const k of ["hit", "drop", "pickup"]) mproutes["POST /api/mp/" + k] = async b => { const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; return [200, { ok: true }]; };
+  mproutes["POST /api/mp/revive"] = async b => { const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; return [200, { ok: false, error: "Indisponível" }]; };
+
   Object.assign(routes, mproutes);
 
   /* stream de eventos em tempo real (SSE) */
