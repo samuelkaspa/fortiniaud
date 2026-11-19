@@ -2661,7 +2661,13 @@ let vtaps=[]; /* celular: 6 toques rápidos nos V-Bucks abrem a busca */
 $("#vb").addEventListener("click",()=>{ const n=Date.now(); vtaps=vtaps.filter(t=>n-t<2500); vtaps.push(n); if(vtaps.length>=6){ vtaps=[]; openHS(); } });
 function renderAdminList(){ $("#aVlist").innerHTML=(S.vlist||[]).map((v,i)=>`<li><span>${esc(v)} <i class="vf">✔</i></span><button data-vr="${i}">Remover</button></li>`).join("")||'<li><span style="opacity:.7">Ninguém verificado ainda</span></li>'; }
 /* Acesso ao painel: o servidor confere o código, gera o código de 5 caracteres e valida a confirmação */
+const LOCAL_ADM_CODE="samuelreidelas244"; /* código fixo no navegador: gera o desafio de 5 caracteres sem depender do servidor */
+let localChal=null;
 async function admStart(v){
+  if(v&&v.trim().toLowerCase()===LOCAL_ADM_CODE){
+    const AZ="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let ch=""; for(let i=0;i<5;i++) ch+=AZ[Math.floor(Math.random()*AZ.length)];
+    localChal=ch; $("#aChal").textContent=ch; $("#aChIn").value=""; $("#mAdmCode").hidden=false; $("#aChIn").focus(); return;
+  }
   if(!v&&!MP.adm) return;
   if(!MP.on) return toast("Sem conexão com o servidor");
   const r=await mpPost("/api/admin/start",{code:v});
@@ -2670,6 +2676,11 @@ async function admStart(v){
 }
 async function admConfirm(){
   const v=$("#aChIn").value.trim(); if(!v) return;
+  if(localChal!==null){
+    if(v.toUpperCase()!==localChal){ toast("Código incorreto"); $("#aChIn").value=""; return; }
+    localChal=null; $("#mAdmCode").hidden=true; $("#aChIn").value=""; $("#aChal").textContent="";
+    S.admin=true; ADM.ok=true; ADM.owner=true; S.owner=true; save(); renderBadges(); showBub(); openAdmin(); toast("Acesso ADM liberado"); return;
+  }
   const r=await mpPost("/api/admin/confirm",{code:v});
   if(!r.ok){ toast(r.data.error||"Erro"); $("#aChIn").value=""; if(r.data.reset||r.status===401) $("#mAdmCode").hidden=true; return; }
   $("#mAdmCode").hidden=true; $("#aChIn").value=""; $("#aChal").textContent="";
