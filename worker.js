@@ -11,9 +11,6 @@ const hash = async (pw, salt) => {
   const k = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveBits"]);
   return hex(new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(salt), iterations: 100000 }, k, 512)));
 };
-/* mesmo hash do código secreto que antes ficava no navegador (agora só o servidor confere) */
-const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
-const ADM_HASH = 2543653124716815;
 const eq = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
 
 /* ---------- Regras ---------- */
@@ -40,7 +37,7 @@ function createGame(ctx, env) {
   const storage = ctx.storage;
 
   /* ---------- Banco: cada conta numa chave "a:<id>", o resto em chaves por seção ---------- */
-  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {}, admins: {}, verified: {} };
+  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {} };
   const dirty = new Set();
   const P = (...keys) => keys.forEach(k => dirty.add(k));
   async function flush() {
@@ -77,23 +74,18 @@ function createGame(ctx, env) {
   function fail(k) { const f = fails[k] || (fails[k] = { n: 0, t: 0 }); if (Date.now() - f.t > 60000) f.n = 0; f.n++; f.t = Date.now(); }
 
   /* ---------- Google (valida o token no servidor) ---------- */
-  const gid = () => String(env.GOOGLE_CLIENT_ID || "").trim();
   async function googleVerify(credential) {
-    if (!gid()) throw new Error("noconfig");
-    if (typeof credential !== "string" || credential.length < 20) throw new Error("invalid");
+    if (!env.GOOGLE_CLIENT_ID) throw new Error("noconfig");
     let r; try { r = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(credential)); } catch (e) { throw new Error("net"); }
     let j; try { j = await r.json(); } catch (e) { throw new Error("invalid"); }
-    if (!r.ok || j.aud !== gid() || String(j.email_verified) !== "true" || !j.sub || !j.email) throw new Error("invalid");
-    if (j.iss !== "accounts.google.com" && j.iss !== "https://accounts.google.com") throw new Error("invalid");
+    if (!r.ok || j.aud !== env.GOOGLE_CLIENT_ID || String(j.email_verified) !== "true") throw new Error("invalid");
     return { sub: j.sub, email: low(j.email) };
   }
-  const gErr = e => e.message === "noconfig" ? [503, { error: "Login com Google ainda não foi configurado no servidor" }]
-    : e.message === "net" ? [503, { error: "Não foi possível falar com o Google agora. Tente de novo." }]
-    : [401, { error: "Não foi possível validar o Google" }];
+  const gErr = e => [e.message === "noconfig" ? 503 : 401, { error: e.message === "noconfig" ? "Login com Google ainda não foi configurado no servidor" : "Não foi possível validar o Google" }];
 
   /* ---------- Rotas de conta ---------- */
   const routes = {
-    "GET /api/config": async () => [200, { googleClientId: gid() }],
+    "GET /api/config": async () => [200, { googleClientId: env.GOOGLE_CLIENT_ID || "" }],
 
     "POST /api/name": async b => {
       if (!codeOk(b.code) || nameErr(b.name)) return [400, { error: "Nome inválido" }];
@@ -185,7 +177,6 @@ function createGame(ctx, env) {
   const live = {}, sids = {}, parties = {}, partyOf = {}, invites = {};
   const cleanName = n => (typeof n === "string" && !nameErr(n) ? n : "Jogador");
   const isOnline = c => !!(live[c] && live[c].sids.size);
-  const isAdm = c => !!db.admins[c];
 
   async function identify(b) {
     if (!b) return null;
@@ -215,13 +206,13 @@ function createGame(ctx, env) {
   const pushReqs = c => { if (isOnline(c)) emit(c, { t: "reqs", reqs: reqList(c) }); };
   const partyView = c => {
     const p = parties[partyOf[c]]; if (!p) return null;
-    return { id: p.id, leader: p.members[0], members: p.members.map(m => ({ code: m, name: nameOf(m), lvl: lvlOf(m), online: isOnline(m), adm: isAdm(m), app: (live[m] && live[m].app) || null })) };
+    return { id: p.id, leader: p.members[0], members: p.members.map(m => ({ code: m, name: nameOf(m), lvl: lvlOf(m), online: isOnline(m), app: (live[m] && live[m].app) || null })) };
   };
   const pushParty = p => p.members.forEach(m => emit(m, { t: "party", party: partyView(m) }));
   const presence = c => (db.friends[c] || []).forEach(pushFriends);
 
   function leaveParty(c) {
-    const pid = partyOf[c], p = parties[pid]; if (!p) return; lobbyLeave(c, pid); cbt(c).imm = 0; delete partyOf[c];
+    const pid = partyOf[c], p = parties[pid]; if (!p) return; delete partyOf[c];
     p.members = p.members.filter(m => m !== c); emit(c, { t: "party", party: null });
     if (p.members.length <= 1) { p.members.forEach(m => { delete partyOf[m]; emit(m, { t: "party", party: null }); }); delete parties[pid]; }
     else pushParty(p);
@@ -248,7 +239,7 @@ function createGame(ctx, env) {
       (db.profiles[id.code] = db.profiles[id.code] || {}).name = (db.profiles[id.code].name || l.name); P("profiles");
       const sid = rnd(16); sids[sid] = { code: id.code, res: null, at: Date.now() };
       setTimeout(() => { if (sids[sid] && !sids[sid].res) delete sids[sid]; }, 30000);
-      return [200, { sid, me: { code: id.code, name: nameOf(id.code), adm: isAdm(id.code) } }];
+      return [200, { sid, me: { code: id.code, name: nameOf(id.code) } }];
     },
     "POST /api/mp/state": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
@@ -312,322 +303,24 @@ function createGame(ctx, env) {
     },
     "POST /api/mp/party/decline": async b => { const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; if (invites[c]) delete invites[c][b.pid]; return [200, { ok: true }]; },
     "POST /api/mp/party/leave": async b => { const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; leaveParty(c); return [200, { ok: true }]; },
+    /* Só o anfitrião (quem convidou = primeiro do grupo) começa a partida; os convidados recebem o aviso e entram junto. */
+    "POST /api/mp/party/start": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const p = parties[partyOf[c]]; if (!p) return [400, { error: "Você não está em um grupo" }];
+      if (p.members[0] !== c) return [403, { error: "Só o anfitrião pode começar a partida" }];
+      const gmode = ["br", "dm", "1v1", "train"].includes(b.gmode) ? b.gmode : "train", mode = ["solo", "duo", "squad"].includes(b.mode) ? b.mode : "solo";
+      p.members.forEach(m => { if (m !== c) emit(m, { t: "start", from: { code: c, name: nameOf(c) }, gmode, mode, af: b.af !== false }); });
+      return [200, { ok: true }];
+    },
     "POST /api/mp/emote": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!EMOTE_IDS.includes(b.id)) return [400, { error: "Emote inválido" }];
-      { const cs = cmb[c]; if (cs && (cs.s !== "n" || cs.rev)) return [409, { error: "Indisponível agora" }]; } /* derrubado/revivendo/eliminado não faz emote */
       const l = live[c], now = Date.now(); if (now - l.lastEmote < 300) return [429, { error: "Calma!" }]; l.lastEmote = now;
       const p = parties[partyOf[c]]; if (p) p.members.forEach(m => { if (m !== c) emit(m, { t: "emote", code: c, id: b.id }); });
       return [200, { ok: true }];
     }
   };
   Object.assign(routes, mproutes);
-
-  /* =====================================================================
-     COMBATE (servidor manda): posição, vida, validação e dano da marreta
-     - o cliente só envia a mira (yaw/pitch) de cada golpe; quem acerta, onde acerta (corpo/cabeça),
-       quanto de dano e a vida resultante são decididos aqui, nunca pelo navegador
-     - dano: corpo 20, cabeça 40 · vida máx. 200 (treino: reaparece com vida cheia após alguns segundos)
-     ===================================================================== */
-  const MAXHP = 200, DMG_BODY = 20, DMG_HEAD = 40, REACH = 2.4, HIT_GAP = 180, POS_TTL = 4000, RESPAWN_MS = 2500, MAX_SPEED = 200;
-  const pos = {}, cmb = {}; let evN = 0;
-  /* estados (só o servidor muda): n = normal · d = derrubado · r = derrubado sendo revivido · x = eliminando (animação) → volta a n
-     NORMAL → CAÍDO → REVIVENDO → NORMAL   ou   NORMAL → CAÍDO → ELIMINANDO → (reaparece) NORMAL */
-  const DOWN_HP = 200, DOWN_DPS = 10 /* 5% da vida máx. por segundo */, REV_MS = 5000, REV_R = 2.2, REV_SLACK = 1, REV_HP = Math.round(MAXHP * 0.3), ELIM_MS = 4500;
-  const cbt = c => cmb[c] || (cmb[c] = { hp: MAXHP, seq: 0, last: 0, win: [], k: -1, tm: 0, imm: 0, s: "n", dh: 0, dt0: 0, rb: null, rev: null, rx: 0, rz: 0, vt: 0, rt: 0, dr: 0 });
-  const curDH = (v, now) => v.s === "d" ? v.dh - DOWN_DPS * (now - v.dt0) / 1000 : v.dh; /* vida de derrubado: só sangra no estado d (revivendo pausa) */
-  const LOB_MS = 20000, LOB_SOLO_MS = 3000; /* lobby antes da partida: 20 s com o grupo (3 s sozinho) */
-  /* lobby: acaba quando o tempo vence; todos os que estão nele recebem 'go' com a mesma rota do avião e deixam de ser imortais */
-  function lobbyGo(pid) {
-    const p = parties[pid]; if (!p || !p.lob || p.lob.started) return; const L = p.lob; L.started = true; clearTimeout(L.tm);
-    L.ins.forEach(m => { cbt(m).imm = 0; emit(m, { t: "go", a: L.a, off: L.off }); });
-  }
-  function lobbyLeave(c, pid) {
-    const p = parties[pid]; if (!p || !p.lob) return; p.lob.ins.delete(c);
-    if (!p.lob.ins.size) { clearTimeout(p.lob.tm); delete p.lob; } /* ninguém mais no treino: o próximo treino abre um lobby novo */
-  }
-  const numIn = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) && v >= lo && v <= hi ? v : null; };
-  const toParty = (c, msg) => { const p = parties[partyOf[c]]; (p ? p.members : [c]).forEach(m => emit(m, msg)); };
-  /* sangramento: agenda o instante exato em que a vida de derrubado chega a zero */
-  function bleedSched(m) {
-    const v = cbt(m); clearTimeout(v.tm); if (v.s !== "d") return;
-    const left = Math.max(0, curDH(v, Date.now()));
-    v.tm = setTimeout(() => { const w = cbt(m); if (w.s !== "d") return; if (curDH(w, Date.now()) <= 1) elim(m); else bleedSched(m); }, Math.ceil(left / DOWN_DPS * 1000) + 15);
-  }
-  /* para uma tentativa de reviver (quem revive = c): volta o alvo para derrubado e avisa o grupo */
-  function revStop(c, why) {
-    const a = cbt(c), t = a.rev; if (!t) return; a.rev = null;
-    const v = cbt(t); clearTimeout(v.vt);
-    if (v.s === "r" && v.rb === c) { v.s = "d"; v.rb = null; v.dt0 = Date.now(); bleedSched(t); }
-    toParty(c, { t: "rv", by: c, v: t, on: 0, why });
-  }
-  function revDone(c, t) {
-    const a = cbt(c), v = cbt(t), now = Date.now(), A = pos[c], V = pos[t];
-    if (a.rev !== t || v.s !== "r" || v.rb !== c || a.s !== "n") return revStop(c, "cancel");
-    if (!A || !V || Math.hypot(A.x - V.x, A.z - V.z) > REV_R + REV_SLACK) return revStop(c, "far");
-    clearTimeout(v.vt); a.rev = null; v.rb = null; v.s = "n"; v.hp = REV_HP; v.dh = 0; v.dt0 = 0;
-    toParty(c, { t: "rv", by: c, v: t, on: 0, why: "done" });
-    toParty(t, { t: "st", code: t, st: "n", hp: REV_HP, dh: 0, by: c });
-  }
-  /* eliminação: acontece UMA vez (se já está em x, ignora); depois da animação o jogador reaparece com vida cheia (modo treino) */
-  function elim(m) {
-    const v = cbt(m); if (v.s === "x") return;
-    if (v.rb) revStop(v.rb, "elim");
-    if (v.rev) revStop(m, "elim");
-    clearTimeout(v.tm); clearTimeout(v.vt); clearTimeout(v.rt);
-    v.s = "x"; v.hp = 0; v.dh = 0; v.dr = 0; const V = pos[m] || { x: 0, y: 0, z: 0, r: 0 };
-    toParty(m, { t: "st", code: m, st: "x", hp: 0, dh: 0, x: V.x, y: V.y, z: V.z, r: V.r });
-    v.rt = setTimeout(() => { v.s = "n"; v.hp = MAXHP; v.dh = 0; v.dr = 0; toParty(m, { t: "st", code: m, st: "n", hp: MAXHP, dh: 0, resp: 1 }); }, ELIM_MS);
-  }
-  const drops = {}; let dropN = 0;
-  const combatRoutes = {
-    /* posição/estado (10 Hz do cliente): guarda no servidor para validar golpes e repassa aos outros do grupo */
-    "POST /api/mp/pos": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const p = parties[partyOf[c]]; if (!p) return [200, { ok: true }];
-      const x = numIn(b.x, -600, 600), y = numIn(b.y, -50, 2000), z = numIn(b.z, -600, 600), r = numIn(b.r, -20, 20), s = numIn(b.s, 0, 200), f = numIn(b.f, 0, 255);
-      if (x === null || y === null || z === null || r === null || s === null || f === null) return [400, { error: "Posição inválida" }];
-      const now = Date.now(), o = pos[c], a = cbt(c);
-      if (o && now - o.t < POS_TTL) {
-        const sp = Math.hypot(x - o.x, z - o.z) / Math.max(0.05, (now - o.t) / 1000);
-        if (sp > MAX_SPEED || ((a.s === "d" || a.s === "r") && sp > 5) || (a.s === "x" && sp > 2)) return [200, { ok: true, rej: 1, hp: a.hp, st: a.s, dh: Math.round(curDH(a, now)) }]; /* teletransporte / derrubado correndo */
-      }
-      pos[c] = { x, y, z, r, f: f | 0, t: now };
-      if (a.rev) { /* quem está reviving precisa ficar parado e perto */
-        const V = pos[a.rev];
-        if (Math.hypot(x - a.rx, z - a.rz) > 0.9 || !V || Math.hypot(x - V.x, z - V.z) > REV_R + REV_SLACK) revStop(c, "move");
-      }
-      const hp = a.hp, fi = f | 0, st = a.s, dh = Math.round(Math.max(0, curDH(a, now)));
-      p.members.forEach(m => { if (m !== c) emit(m, { t: "pos", code: c, x, y, z, r, s, f: fi, hp, st, dh, rv: a.rev ? 1 : 0 }); });
-      return [200, { ok: true, hp, st, dh }];
-    },
-    /* entrou no treino (vida cheia, contador de golpes zerado) ou saiu (off) */
-    "POST /api/mp/spawn": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const a = cbt(c); if (a.rev) revStop(c, "leave"); if (a.rb) revStop(a.rb, "leave");
-      clearTimeout(a.tm); clearTimeout(a.vt); clearTimeout(a.rt); a.hp = MAXHP; a.seq = 0; a.last = 0; a.win = []; a.s = "n"; a.dh = 0; a.dr = 0; a.rb = null; a.rev = null; a.k = -1; a.imm = 0; delete pos[c];
-      const pid = partyOf[c], p = parties[pid], now = Date.now();
-      if (!b.lobby) { lobbyLeave(c, pid); toParty(c, { t: "hp", code: c, hp: MAXHP }); return [200, { ok: true, hp: MAXHP }]; } /* saiu do treino */
-      /* entrou no treino: vai para o lobby pequeno, imortal, até a partida começar */
-      if (!p || p.members.length < 2) return [200, { ok: true, hp: MAXHP, lob: { left: LOB_SOLO_MS } }];
-      if (!p.lob) { const L = p.lob = { end: now + LOB_MS, a: +(Math.random() * Math.PI * 2).toFixed(3), off: +((Math.random() - 0.5) * 300).toFixed(1), ins: new Set(), started: false, tm: 0 }; L.tm = setTimeout(() => lobbyGo(pid), LOB_MS); }
-      const L = p.lob;
-      if (L.started) return [200, { ok: true, hp: MAXHP, lob: { left: 0, a: L.a, off: L.off } }]; /* a partida já começou: entra direto no avião */
-      L.ins.add(c); a.imm = Infinity; toParty(c, { t: "hp", code: c, hp: MAXHP });
-      return [200, { ok: true, hp: MAXHP, lob: { left: Math.max(0, L.end - now), a: L.a, off: L.off } }];
-    },
-    /* um golpe da marreta chegou ao ponto de impacto: o servidor procura o alvo e aplica o dano */
-    "POST /api/mp/hit": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const q = b.q, yaw = numIn(b.yaw, -1e4, 1e4), pitch = numIn(b.pitch, -3, 3);
-      if (!Number.isInteger(q) || q < 1 || yaw === null || pitch === null) return [400, { error: "Golpe inválido" }];
-      const a = cbt(c), now = Date.now();
-      if (q <= a.seq) return [200, { ok: true, dup: 1 }]; /* golpe repetido/reenviado: ignora */
-      a.seq = q;
-      if (a.s !== "n" || a.rev) return [200, { ok: true }]; /* derrubado, revivendo ou eliminado não ataca */
-      a.win = a.win.filter(t => now - t < 1400);
-      if (now - a.last < HIT_GAP || a.win.length >= 5) return [429, { error: "Calma!" }]; /* mais rápido que a animação permite */
-      a.last = now; a.win.push(now);
-      const p = parties[partyOf[c]], A = pos[c];
-      if (!p || !A || now - A.t > POS_TTL) return [200, { ok: true, miss: 1 }];
-      /* direção da mira: a câmera olha para -(sen yaw, cos yaw); o pitch .28 (padrão) mira reto, pitch menor mira para cima */
-      const fx = -Math.sin(yaw), fz = -Math.cos(yaw), elev = 0.28 - pitch;
-      let best = null;
-      for (const m of p.members) {
-        if (m === c) continue;
-        const V = pos[m], vb = cbt(m); if (!V || now - V.t > POS_TTL || vb.s === "x" || (vb.s === "n" && vb.hp <= 0) || now < vb.imm) continue; /* imortal no lobby */
-        const dx = V.x - A.x, dz = V.z - A.z, d = Math.hypot(dx, dz);
-        if (d > REACH || Math.abs(V.y - A.y) > 2.2) continue;
-        const cs = d < 0.6 ? 1 : (dx * fx + dz * fz) / d; if (cs < 0.5) continue; /* cone de ±60° à frente */
-        const score = d * (2 - cs); if (!best || score < best.score) best = { m, d, dx, dz, V, score };
-      }
-      if (!best) return [200, { ok: true, miss: 1 }];
-      /* região: a altura da mira no alvo decide. Cabeça tem área própria (esfera em y≈1.78, raio ≈.22 + folga). Derrubado: só corpo */
-      const vb = cbt(best.m), vm = best.m, down = vb.s === "d" || vb.s === "r";
-      const sA = A.f & 2 ? 0.75 : 1, sV = best.V.f & 2 ? 0.75 : 1;
-      const yAim = (A.y + sA) + Math.tan(elev) * Math.max(best.d, 1.6) - best.V.y;
-      const headC = 1.78 * sV, headR = 0.4 * sV;
-      if (down ? yAim > 1.4 : yAim > headC + headR) return [200, { ok: true, miss: 1 }]; /* passou por cima */
-      const head = !down && Math.abs(yAim - headC) <= headR, dmg = head ? DMG_HEAD : DMG_BODY;
-      if (vb.rev) revStop(vm, "dmg"); /* quem estava reviving levou dano: cancela */
-      let st;
-      if (down) { /* dano extra em derrubado: tira da vida de derrubado (a revivida em andamento continua, mas o sangramento já estava pausado) */
-        vb.dh = Math.max(0, curDH(vb, now) - dmg); vb.dt0 = now; st = vb.dh <= 0 ? "x" : vb.s;
-        if (vb.s === "d") bleedSched(vm);
-      } else {
-        vb.hp = Math.max(0, vb.hp - dmg);
-        if (vb.hp <= 0) { vb.s = "d"; vb.dh = DOWN_HP; vb.dt0 = now; st = "d"; bleedSched(vm); } else st = "n"; /* vida normal zerou: derrubado, nunca eliminado direto */
-      }
-      let k = Math.floor(Math.random() * 3); if (k === vb.k) k = (k + 1 + Math.floor(Math.random() * 2)) % 3; vb.k = k; /* nunca repete a variação anterior */
-      const n = Math.hypot(best.dx, best.dz) || 1;
-      const ev = { t: "hit", e: ++evN, a: c, v: vm, d: dmg, h: head ? 1 : 0, hp: vb.hp, st, dh: Math.round(Math.max(0, st === "x" ? 0 : curDH(vb, now))), k, x: +(best.dx / n).toFixed(3), z: +(best.dz / n).toFixed(3) };
-      p.members.forEach(m => emit(m, ev));
-      if (st === "x") elim(vm);
-      return [200, { ok: true, hit: 1, d: dmg, h: head ? 1 : 0 }];
-    },
-    /* reviver um companheiro derrubado do mesmo grupo: {t: código} começa · {off: 1} cancela. Só um por vez; o servidor termina em REV_MS se nada cancelar */
-    "POST /api/mp/revive": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const a = cbt(c), now = Date.now(), p = parties[partyOf[c]];
-      if (b.off) { revStop(c, "cancel"); return [200, { ok: true }]; }
-      const t = typeof b.t === "string" ? b.t : "";
-      if (!p || t === c || !p.members.includes(t)) return [400, { error: "Alvo inválido" }];
-      const v = cbt(t), A = pos[c], V = pos[t];
-      if (a.s !== "n" || a.rev) return [409, { error: "Você não pode reviver agora" }];
-      if (v.s === "r") return [409, { error: "Outro jogador já está revivendo" }]; /* nunca dois ao mesmo tempo */
-      if (v.s !== "d") return [409, { error: "O jogador não está derrubado" }];
-      if (!A || !V || now - A.t > POS_TTL || now - V.t > POS_TTL || Math.hypot(A.x - V.x, A.z - V.z) > REV_R + REV_SLACK || Math.abs(A.y - V.y) > 2.2) return [409, { error: "Chegue mais perto" }];
-      v.dh = Math.max(1, curDH(v, now)); v.s = "r"; v.rb = c; clearTimeout(v.tm); /* sangramento pausa enquanto revive */
-      a.rev = t; a.rx = A.x; a.rz = A.z; a.win = [];
-      clearTimeout(v.vt); v.vt = setTimeout(() => revDone(c, t), REV_MS);
-      p.members.forEach(m => emit(m, { t: "rv", by: c, v: t, on: 1, ms: REV_MS }));
-      return [200, { ok: true, ms: REV_MS }];
-    },
-    /* quem acabou de ser eliminado deixa os itens (fora a picareta) no local onde caiu; o servidor guarda e avisa o grupo */
-    "POST /api/mp/drop": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const a = cbt(c), V = pos[c]; if (a.s !== "x" || a.dr || !V || !Array.isArray(b.items)) return [200, { ok: true }];
-      const items = b.items.slice(0, 5).filter(i => i && typeof i.id === "string" && /^[a-z0-9_]{1,16}$/.test(i.id)).map(i => ({ id: i.id, n: String(i.n || i.id).slice(0, 24) }));
-      a.dr = 1; if (!items.length) return [200, { ok: true }];
-      const d = { id: ++dropN, x: V.x, y: V.y, z: V.z, items, pid: partyOf[c] }; drops[d.id] = d;
-      setTimeout(() => { delete drops[d.id]; }, 5 * 60e3);
-      toParty(c, { t: "drop", id: d.id, x: d.x, y: d.y, z: d.z, items });
-      return [200, { ok: true }];
-    },
-    "POST /api/mp/pickup": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const d = drops[b.id | 0], A = pos[c], a = cbt(c);
-      if (!d || !A || a.s !== "n" || d.pid !== partyOf[c] || Math.hypot(A.x - d.x, A.z - d.z) > 3 || Math.abs(A.y - d.y) > 3) return [200, { ok: true, none: 1 }];
-      delete drops[d.id]; toParty(c, { t: "pick", id: d.id, by: c, items: d.items });
-      return [200, { ok: true }];
-    }
-  };
-  Object.assign(routes, combatRoutes);
-
-  /* =====================================================================
-     ADMIN: acesso confirmado pelo servidor + concessão da tag/permissão ADM
-     1) /start  recebe o código de acesso (ou um ADM já concedido) e gera um código aleatório de 5 caracteres
-     2) /confirm confere o código digitado; só então o servidor libera a sessão de admin (30 min)
-     3) /players e /grant exigem essa sessão; jogador comum nunca passa
-     ===================================================================== */
-  const admSess = {}, admPend = {}, ADM_TTL = 30 * 60e3, CH_TTL = 2 * 60e3, CH_TRIES = 3;
-  const admOk = c => { const s = admSess[c]; if (s && s.exp <= Date.now()) { delete admSess[c]; return false; } return !!s; };
-  function chalCode() {
-    const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; /* letras e números, sem os que confundem (0/O, 1/I) */
-    for (;;) {
-      const c = [...crypto.getRandomValues(new Uint8Array(5))].map(x => A[x % 32]).join("");
-      if (/[A-Z]/.test(c) && /[2-9]/.test(c)) return c; /* sempre tem letra e número */
-    }
-  }
-  const adminRoutes = {
-    "POST /api/admin/start": async (b, req) => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const k = "adm|" + (req.headers.get("CF-Connecting-IP") || "") + "|" + c;
-      if (locked(k)) return [429, { error: "Muitas tentativas. Espere 1 minuto." }];
-      const raw = typeof b.code === "string" ? b.code.trim().toLowerCase() : "";
-      let owner = false;
-      if (raw) { if (raw.length > 64 || cyrb53(raw) !== ADM_HASH) { fail(k); return [403, { error: "Acesso negado" }]; } owner = true; }
-      else if (!isAdm(c)) { fail(k); return [403, { error: "Acesso negado" }]; } /* sem código: só quem já recebeu ADM */
-      delete fails[k];
-      delete admSess[c];
-      const val = chalCode();
-      admPend[c] = { val, exp: Date.now() + CH_TTL, tries: 0, sid: b.sid, owner };
-      return [200, { challenge: val, ttl: CH_TTL / 1000 }];
-    },
-    "POST /api/admin/confirm": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      const p = admPend[c];
-      if (!p || p.sid !== b.sid || Date.now() > p.exp) { delete admPend[c]; return [410, { error: "Código expirado. Comece de novo.", reset: true }]; }
-      const v = typeof b.code === "string" ? b.code.trim().toUpperCase() : "";
-      if (!eq(v, p.val)) {
-        if (++p.tries >= CH_TRIES) { delete admPend[c]; return [403, { error: "Código incorreto. Comece de novo.", reset: true }]; }
-        return [403, { error: "Código incorreto" }];
-      }
-      delete admPend[c];
-      admSess[c] = { exp: Date.now() + ADM_TTL, owner: p.owner };
-      return [200, { ok: true, owner: p.owner, adm: isAdm(c) }];
-    },
-    "POST /api/admin/players": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
-      const players = Object.keys(live).filter(isOnline).map(k => ({ code: k, name: nameOf(k), lvl: lvlOf(k), adm: isAdm(k), ver: !!db.verified[k], me: k === c }));
-      return [200, { players, owner: !!admSess[c].owner }];
-    },
-    /* ações abaixo: só o dono (quem entrou com o código de acesso) */
-    "POST /api/admin/revoke": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
-      const t = b.code;
-      if (!codeOk(t) || !isAdm(t)) return [404, { error: "Esse jogador não é ADM" }];
-      delete db.admins[t]; delete admSess[t]; delete admPend[t]; P("admins");
-      emit(t, { t: "adm", on: false }); emit(t, { t: "toast", msg: "Sua tag ADM foi removida" });
-      const p = parties[partyOf[t]]; if (p) pushParty(p);
-      return [200, { ok: true, name: nameOf(t) }];
-    },
-    "POST /api/admin/verify": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
-      const t = b.code;
-      if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
-      const on = !!b.on; if (on) db.verified[t] = 1; else delete db.verified[t]; P("verified");
-      emit(t, { t: "ver", on });
-      return [200, { ok: true, name: nameOf(t), on }];
-    },
-    /* expulsar = apagar a conta e todos os dados do jogador (só o dono) */
-    "POST /api/admin/kick": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
-      const t = b.code;
-      if (!codeOk(t)) return [400, { error: "Código inválido" }];
-      if (t === c) return [400, { error: "Você não pode expulsar a si mesmo" }];
-      const a = acctByCode(t);
-      if (!a && !isOnline(t) && !db.profiles[t]) return [404, { error: "Jogador não encontrado" }];
-      const name = nameOf(t);
-      emit(t, { t: "kick" });
-      leaveParty(t);
-      if (a) { delete db.accounts[a.id]; for (const k of Object.keys(db.sessions)) if (db.sessions[k].id === a.id) delete db.sessions[k]; P("a:" + a.id, "sessions"); }
-      for (const k of Object.keys(db.names)) if (db.names[k] === t) delete db.names[k];
-      const hadFriends = db.friends[t] || [], hadReq = [];
-      delete db.friends[t]; delete db.reqs[t];
-      for (const k of Object.keys(db.friends)) if (db.friends[k].includes(t)) db.friends[k] = db.friends[k].filter(x => x !== t);
-      for (const k of Object.keys(db.reqs)) if (db.reqs[k].includes(t)) { db.reqs[k] = db.reqs[k].filter(x => x !== t); hadReq.push(k); }
-      delete db.profiles[t]; delete db.guests[t]; delete db.admins[t]; delete db.verified[t];
-      delete admSess[t]; delete admPend[t]; delete invites[t]; delete pos[t]; if (cmb[t]) { clearTimeout(cmb[t].tm); delete cmb[t]; }
-      P("names", "friends", "reqs", "profiles", "guests", "admins", "verified");
-      for (const sid of Object.keys(sids)) if (sids[sid].code === t) delete sids[sid];
-      delete live[t];
-      hadFriends.forEach(pushFriends); hadReq.forEach(pushReqs);
-      return [200, { ok: true, name }];
-    },
-    "POST /api/admin/gift": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
-      const t = b.code, n = Math.floor(Number(b.amount)), kind = b.kind;
-      if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
-      if (!["vb", "xp", "pxp"].includes(kind)) return [400, { error: "Tipo inválido" }];
-      if (!(n >= 1 && n <= 1e6)) return [400, { error: "Quantidade de 1 a 1.000.000" }];
-      emit(t, { t: "gift", kind, n });
-      return [200, { ok: true, name: nameOf(t) }];
-    },
-    "POST /api/admin/grant": async b => {
-      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
-      if (!admOk(c)) return [403, { error: "Painel não confirmado. Abra de novo.", reset: true }];
-      if (!admSess[c].owner) return [403, { error: "Só o dono pode fazer isso" }];
-      const t = b.code;
-      if (!codeOk(t) || !isOnline(t)) return [404, { error: "Esse jogador não está mais na partida" }];
-      if (isAdm(t)) return [409, { error: "Esse jogador já é ADM" }];
-      db.admins[t] = { at: Date.now(), by: c }; P("admins");
-      emit(t, { t: "adm", on: true }); emit(t, { t: "toast", msg: "Você recebeu a tag ADM" });
-      const p = parties[partyOf[t]]; if (p) pushParty(p);
-      return [200, { ok: true, name: nameOf(t) }];
-    }
-  };
-  Object.assign(routes, adminRoutes);
 
   /* stream de eventos em tempo real (SSE) */
   function openStream(u) {
@@ -639,13 +332,12 @@ function createGame(ctx, env) {
         s.res = { write: d => ctrl.enqueue(enc.encode(d)) };
         l.sids.add(sid);
         s.res.write("retry: 4000\n\n");
-        emit(c, { t: "init", adm: isAdm(c), ver: !!db.verified[c], me: { code: c, name: nameOf(c) }, friends: friendList(c), reqs: reqList(c), party: partyView(c) });
+        emit(c, { t: "init", me: { code: c, name: nameOf(c) }, friends: friendList(c), reqs: reqList(c), party: partyView(c) });
         presence(c); const pp = parties[partyOf[c]]; if (pp) pushParty(pp);
         ping = setInterval(() => { try { s.res.write(": ping\n\n"); } catch (e) {} }, 20000);
       },
       cancel() {
         clearInterval(ping); l.sids.delete(sid); delete sids[sid]; s.res = null; if (l.sids.size) return;
-        delete pos[c];
         presence(c); const p = parties[partyOf[c]]; if (p) pushParty(p);
         setTimeout(() => { if (!isOnline(c)) leaveParty(c); }, 15000);
       }
@@ -717,7 +409,7 @@ export default {
     const p = new URL(request.url).pathname;
     if (p.startsWith("/api/")) return env.GAME.get(env.GAME.idFromName("main")).fetch(request);
     if (p === "/" || p === "/index.html" || p === "/fortiniaud.html")
-      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "Cross-Origin-Opener-Policy": "same-origin-allow-popups" } });
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
     if (p === "/privacidade") return page("Política de Privacidade", PRIVACY);
     if (p === "/termos") return page("Termos de Serviço", TERMS);
     return new Response("Not found", { status: 404 });
