@@ -1,0 +1,16 @@
+{
+  "name": "cubedax",
+  "main": "worker.js",
+  "compatibility_date": "2025-01-01",
+  "rules": [
+    { "type": "Text", "globs": ["**/*.html"], "fallthrough": true }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "HUB", "class_name": "GameHub" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameHub"] }
+  ]
+}
