@@ -27,7 +27,7 @@ const gmailOk = e => typeof e === "string" && /^[a-z0-9._+-]+@(gmail|googlemail)
 const low = s => String(s).toLowerCase();
 const codeFmt = c => typeof c === "string" && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(c);
 const clean = st => { if (!st || typeof st !== "object") return null; const o = Object.assign({}, st); delete o.acc; return o; };
-const pub = a => ({ name: a.name, code: a.code, type: a.type });
+const pub = a => ({ name: a.name, code: a.code, type: a.type, owner: !!a.owner });
 const send = (code, obj) => new Response(JSON.stringify(obj), { status: code, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
 
 const EMOTE_IDS = ["wave", "clap", "box", "twerk", "laugh", "cry", "dis", "crazy"];
@@ -37,7 +37,7 @@ function createGame(ctx, env) {
   const storage = ctx.storage;
 
   /* ---------- Banco: cada conta numa chave "a:<id>", o resto em chaves por seção ---------- */
-  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {} };
+  const db = { accounts: {}, names: {}, sessions: {}, friends: {}, reqs: {}, profiles: {}, guests: {}, xfers: {} };
   const dirty = new Set();
   const P = (...keys) => keys.forEach(k => dirty.add(k));
   async function flush() {
@@ -68,6 +68,11 @@ function createGame(ctx, env) {
     const s = db.sessions[await sha(t)];
     return s ? db.accounts[s.id] || null : null;
   }
+
+  /* Código secreto do Owner: defina OWNER_CODE como secret no Cloudflare (wrangler secret put OWNER_CODE). Sem ele, usa o código antigo. */
+  const OWNER_CODE = low(String(env.OWNER_CODE || "samuelreidelas244")), OWNER_MAX = 9999999;
+  const ownerChal = {};
+  const ownerOf = async b => { const a = await sessAcct(b && b.token); return a && a.owner ? a : null; };
 
   const fails = {};
   const locked = k => { const f = fails[k]; return f && f.n >= 5 && Date.now() - f.t < 60000; };
@@ -164,6 +169,102 @@ function createGame(ctx, env) {
       return [200, { ok: true, account: pub(a) }];
     },
 
+    /* ---------- Owner: liberação permanente na conta, busca de jogadores e envio de V-Bucks ---------- */
+    "POST /api/owner/start": async b => {
+      const a = await sessAcct(b.token); if (!a) return [401, { error: "Entre numa conta para usar o painel Owner" }];
+      const k = "own|" + a.id; if (locked(k)) return [429, { error: "Muitas tentativas. Espere 1 minuto." }];
+      if (typeof b.code !== "string" || !eq(await sha(low(b.code.trim())), await sha(OWNER_CODE))) { fail(k); return [403, { error: "Código incorreto" }]; }
+      delete fails[k];
+      if (a.owner) return [200, { ok: true, already: true }];
+      const AZ = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const ch = [...crypto.getRandomValues(new Uint8Array(5))].map(x => AZ[x % AZ.length]).join("");
+      ownerChal[a.id] = { ch, at: Date.now() };
+      return [200, { ok: true, challenge: ch }];
+    },
+    "POST /api/owner/confirm": async b => {
+      const a = await sessAcct(b.token); if (!a) return [401, { error: "Sessão expirada" }];
+      const k = "own|" + a.id; if (locked(k)) return [429, { error: "Muitas tentativas. Espere 1 minuto." }];
+      const c = ownerChal[a.id];
+      if (!c || Date.now() - c.at > 120000) { delete ownerChal[a.id]; return [401, { error: "Código expirado. Digite o código secreto de novo.", reset: true }]; }
+      if (typeof b.code !== "string" || !eq(b.code.trim().toUpperCase(), c.ch)) { fail(k); return [400, { error: "Código incorreto" }]; }
+      delete ownerChal[a.id]; delete fails[k];
+      a.owner = true; a.ownerAt = Date.now(); P("a:" + a.id); /* fica gravado na conta: vale em qualquer aparelho e em todo login */
+      return [200, { ok: true, owner: true }];
+    },
+    "POST /api/owner/search": async b => {
+      const o = await ownerOf(b); if (!o) return [403, { error: "Sem permissão" }];
+      const q = typeof b.q === "string" ? b.q.trim().slice(0, 20) : "";
+      if (q.length < 2) return [400, { error: "Digite pelo menos 2 caracteres" }];
+      const up = q.toUpperCase(), ql = low(q);
+      const list = Object.values(db.accounts).filter(a => low(a.name).includes(ql) || (up.length >= 4 && /^[A-Z0-9-]+$/.test(up) && a.code.includes(up)));
+      list.sort((x, y) => ((low(y.name) === ql || y.code === up) - (low(x.name) === ql || x.code === up)) || (isOnline(y.code) - isOnline(x.code)) || x.name.localeCompare(y.name));
+      return [200, { players: list.slice(0, 8).map(a => ({ code: a.code, name: a.name, lvl: lvlOf(a.code), online: isOnline(a.code), me: a.code === o.code })) }];
+    },
+    /* O envio vai para a caixa de entrada da conta (gravada no servidor). O jogador só soma ao saldo quando recebe e confirma (ack), então o save dele nunca sobrescreve o crédito e ele nunca recebe duas vezes. */
+    "POST /api/owner/send": async b => {
+      const o = await ownerOf(b); if (!o) return [403, { error: "Sem permissão" }];
+      const rid = typeof b.req === "string" && /^[a-f0-9]{16,32}$/.test(b.req) ? b.req : ""; if (!rid) return [400, { error: "Requisição inválida" }];
+      const key = o.id + "|" + rid, prev = db.xfers[key];
+      if (prev) return [200, { ok: true, dup: true, name: prev.name, amount: prev.amt, done: !!prev.done }]; /* mesmo clique repetido: não envia de novo */
+      const amt = Number(b.amount);
+      if (!Number.isInteger(amt) || amt < 1 || amt > OWNER_MAX) return [400, { error: "Valor inválido (de 1 a 9.999.999)" }];
+      const t = typeof b.to === "string" ? acctByCode(b.to) : null; if (!t) return [404, { error: "Jogador não encontrado" }];
+      t.inbox = Array.isArray(t.inbox) ? t.inbox : [];
+      if (t.inbox.length >= 200) return [409, { error: "Esse jogador tem envios pendentes demais" }];
+      const tid = rnd(8), now = Date.now();
+      t.inbox.push({ id: tid, key, amt, from: o.code, fromName: o.name, ts: now });
+      db.xfers[key] = { tid, to: t.code, name: t.name, amt, ts: now, done: 0 };
+      const ks = Object.keys(db.xfers); if (ks.length > 1200) ks.sort((x, y) => db.xfers[x].ts - db.xfers[y].ts).slice(0, 200).forEach(x => delete db.xfers[x]);
+      P("a:" + t.id, "xfers");
+      emit(t.code, { t: "inbox" });
+      return [200, { ok: true, name: t.name, amount: amt, online: isOnline(t.code) }];
+    },
+    /* Envio de skin: mesma caixa de entrada dos V-Bucks. A skin só entra no inventário quando o jogador recebe e confirma (ack). Trava contra duplicação: chave única por envio (req), skin já possuída e skin já pendente. */
+    "POST /api/owner/sendskin": async b => {
+      const o = await ownerOf(b); if (!o) return [403, { error: "Sem permissão" }];
+      const rid = typeof b.req === "string" && /^[a-f0-9]{16,32}$/.test(b.req) ? b.req : ""; if (!rid) return [400, { error: "Requisição inválida" }];
+      const key = o.id + "|" + rid, prev = db.xfers[key];
+      if (prev) return [200, { ok: true, dup: true, name: prev.name, skin: prev.skin || "", sname: prev.sname || "", done: !!prev.done }]; /* mesmo clique repetido: não envia de novo */
+      const sk = typeof b.skin === "string" && /^[a-z0-9_]{1,16}$/.test(b.skin) ? b.skin : ""; if (!sk) return [400, { error: "Skin inválida" }];
+      const sname = String(b.sname || sk).replace(/[^\p{L}\p{N} '\-]/gu, "").trim().slice(0, 40) || sk;
+      const t = typeof b.to === "string" ? acctByCode(b.to) : null; if (!t) return [404, { error: "Jogador não encontrado" }];
+      if (t.save && Array.isArray(t.save.owned) && t.save.owned.includes(sk)) return [409, { error: "Esse jogador já possui essa skin" }];
+      t.inbox = Array.isArray(t.inbox) ? t.inbox : [];
+      if (t.inbox.some(i => i.skin === sk)) return [409, { error: "Essa skin já está a caminho desse jogador" }];
+      if (t.inbox.length >= 200) return [409, { error: "Esse jogador tem envios pendentes demais" }];
+      const tid = rnd(8), now = Date.now();
+      t.inbox.push({ id: tid, key, amt: 0, skin: sk, sname, from: o.code, fromName: o.name, ts: now });
+      db.xfers[key] = { tid, to: t.code, name: t.name, skin: sk, sname, amt: 0, ts: now, done: 0 };
+      const ks = Object.keys(db.xfers); if (ks.length > 1200) ks.sort((x, y) => db.xfers[x].ts - db.xfers[y].ts).slice(0, 200).forEach(x => delete db.xfers[x]);
+      P("a:" + t.id, "xfers");
+      emit(t.code, { t: "inbox" });
+      return [200, { ok: true, name: t.name, skin: sk, sname, online: isOnline(t.code) }];
+    },
+    "POST /api/owner/status": async b => {
+      const o = await ownerOf(b); if (!o) return [403, { error: "Sem permissão" }];
+      const x = db.xfers[o.id + "|" + String(b.req)]; if (!x) return [404, { error: "Envio não encontrado" }];
+      return [200, { ok: true, done: !!x.done, dup: !!x.dup, name: x.name, amount: x.amt, skin: x.skin || "", sname: x.sname || "" }];
+    },
+    "POST /api/inbox": async b => {
+      const a = await sessAcct(b.token); if (!a) return [401, { error: "Sessão expirada" }];
+      return [200, { items: (a.inbox || []).map(i => ({ id: i.id, amt: i.amt, skin: i.skin || "", from: i.fromName })) }];
+    },
+    "POST /api/inbox/ack": async b => {
+      const a = await sessAcct(b.token); if (!a) return [401, { error: "Sessão expirada" }];
+      const ids = Array.isArray(b.ids) ? b.ids.filter(x => typeof x === "string").slice(0, 50) : [];
+      const dups = Array.isArray(b.dups) ? b.dups.filter(x => typeof x === "string").slice(0, 50) : [];
+      const keep = [], gone = []; for (const i of a.inbox || []) (ids.includes(i.id) ? gone : keep).push(i);
+      if (gone.length) {
+        a.inbox = keep; P("a:" + a.id, "xfers");
+        for (const i of gone) {
+          const x = db.xfers[i.key]; if (x) x.done = Date.now();
+          if (i.skin) { const had = dups.includes(i.id); if (x && had) x.dup = 1; emit(i.from, { t: "toast", msg: had ? a.name + " já possuía a skin " + (i.sname || i.skin) : a.name + " recebeu a skin " + (i.sname || i.skin) }); }
+          else emit(i.from, { t: "toast", msg: a.name + " recebeu 💎 " + i.amt.toLocaleString("pt-BR") + " V-Bucks" });
+        }
+      }
+      return [200, { ok: true }];
+    },
+
     "POST /api/logout": async b => {
       if (typeof b.token === "string") { delete db.sessions[await sha(b.token)]; P("sessions"); }
       return [200, { ok: true }];
@@ -214,7 +315,7 @@ function createGame(ctx, env) {
   function leaveParty(c) {
     const pid = partyOf[c], p = parties[pid]; if (!p) return; delete partyOf[c]; if (typeof lobbyLeave === "function") lobbyLeave(c);
     p.members = p.members.filter(m => m !== c); emit(c, { t: "party", party: null });
-    if (p.members.length <= 1) { p.members.forEach(m => { delete partyOf[m]; emit(m, { t: "party", party: null }); }); delete parties[pid]; }
+    if (p.members.length <= 1) { p.members.forEach(m => { delete partyOf[m]; emit(m, { t: "party", party: null }); }); delete parties[pid]; gdClear(pid); }
     else pushParty(p);
     presence(c);
   }
@@ -312,6 +413,15 @@ function createGame(ctx, env) {
       p.members.forEach(m => { if (m !== c) emit(m, { t: "start", from: { code: c, name: nameOf(c) }, gmode, mode, af: b.af !== false }); });
       return [200, { ok: true }];
     },
+    /* chat do grupo: texto curto, limpo e com limite de velocidade; vai para os outros membros (quem enviou já mostra o balão localmente) */
+    "POST /api/mp/chat": async b => {
+      const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
+      const msg = String(b.msg == null ? "" : b.msg).replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+      if (!msg) return [400, { error: "Mensagem vazia" }];
+      const l = live[c], now = Date.now(); if (now - (l.lastChat || 0) < 600) return [429, { error: "Calma!" }]; l.lastChat = now;
+      cast(c, { t: "chat", code: c, msg }, false);
+      return [200, { ok: true }];
+    },
     "POST /api/mp/emote": async b => {
       const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }];
       if (!EMOTE_IDS.includes(b.id)) return [400, { error: "Emote inválido" }];
@@ -340,7 +450,7 @@ function createGame(ctx, env) {
     const sc = cs(c); if (sc) sc.lob = b.lobby ? Date.now() + 8000 : 0;
     if (!b.lobby) {
       lobbyLeave(c); const pp = parties[partyOf[c]];
-      if (pp && !pp.members.some(m => live[m] && live[m].ing)) pp.bl = {}; /* ninguém mais na partida: apaga as construções do grupo */
+      if (pp && !pp.members.some(m => live[m] && live[m].ing)) { pp.bl = {}; gdClear(pp.id); } /* ninguém mais na partida: apaga as construções e os itens do chão */
       return [200, { ok: true }];
     }
     const p = parties[partyOf[c]];
@@ -350,7 +460,7 @@ function createGame(ctx, env) {
       if (L) clearTimeout(L.tm);
       L = lobbies[p.id] = { m: new Set(), end: Date.now() + LOBBY_MS, went: 0, a: Math.random() * Math.PI * 2, off: (Math.random() - .5) * .6, tm: null };
       L.tm = setTimeout(() => lobbyGo(p.id), LOBBY_MS);
-      p.bl = {}; /* partida nova: construções novas */
+      p.bl = {}; gdClear(p.id); /* partida nova: construções e itens novos */
     }
     L.m.add(c); if (live[c]) live[c].ing = true;
     if (sc) sc.lob = L.went ? 0 : L.end + 5000;
@@ -366,11 +476,13 @@ function createGame(ctx, env) {
   const curDh = s => (s.st === "d" && !s.rb ? Math.max(0, s.dh - BLEED * (Date.now() - s.dt) / 1000) : s.dh);
   const stOf = s => (s.st === "d" && s.rb ? "r" : s.st);
   function resetCb(c) { const s = cs(c); if (!s) return; clearTimeout(s.tm); clearTimeout(s.rtm); if (s.rv) stopRev(c, "cancel"); Object.assign(s, { hp: HP_MAX, st: "n", dh: 0, rb: null, rv: null, tm: null, rtm: null }); }
-  function armBleed(v) { const s = cs(v); clearTimeout(s.tm); s.tm = setTimeout(() => kill(v), Math.max(50, s.dh / BLEED * 1000)); }
-  function kill(v) {
-    const s = cs(v); if (!s || s.st === "x") return; clearTimeout(s.tm);
+  function armBleed(v) { const s = cs(v); clearTimeout(s.tm); s.tm = setTimeout(() => kill(v, { why: "bleed" }), Math.max(50, s.dh / BLEED * 1000)); }
+  /* o = { a: quem eliminou, head: o golpe final foi na cabeça, why }. Só aqui nasce a "caveira": uma vez por eliminação (s.st === "x" barra repetição) */
+  function kill(v, o) {
+    const s = cs(v); if (!s || s.st === "x") return; clearTimeout(s.tm); o = o || {};
     if (s.rb) stopRev(s.rb, "elim"); s.st = "x"; s.hp = 0; s.dh = 0; s.rb = null;
     cast(v, { t: "st", code: v, st: "x", hp: 0, dh: 0 }, true);
+    cast(v, { t: "kf", id: rnd(5), v, a: o.a && o.a !== v ? o.a : "", h: o.head ? 1 : 0, why: o.why || "" }, true);
     s.tm = setTimeout(() => respawn(v), RESPAWN_MS);
   }
   function respawn(v) { const s = cs(v); if (!s || s.st !== "x") return; s.st = "n"; s.hp = HP_MAX; s.dh = 0; cast(v, { t: "st", code: v, st: "n", hp: HP_MAX, dh: 0 }, true); }
@@ -386,7 +498,7 @@ function createGame(ctx, env) {
     else { s.dh = Math.max(0, curDh(s) - d); s.dt = Date.now(); if (s.dh <= 0) { s.hp = 0; } else armBleed(v); }
     const dead = s.st === "d" && s.dh <= 0;
     cast(a, { t: "hit", e: rnd(5), a, v, d, h: head ? 1 : 0, hp: s.hp, st: dead ? "x" : s.st, dh: Math.round(s.dh), x: dx, z: dz, k: (Math.random() * 3) | 0 }, true);
-    if (dead) kill(v);
+    if (dead) kill(v, { a, head: !!head }); /* headshot só conta se foi o golpe que eliminou */
   }
   mproutes["POST /api/mp/pos"] = async b => {
     const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), p = party(c); if (!s) return [200, { ok: true }];
@@ -419,7 +531,7 @@ function createGame(ctx, env) {
     const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c); if (!s) return [200, { ok: true }];
     if (b.rs) { if (s.st === "x") { clearTimeout(s.tm); s.st = "n"; s.hp = HP_MAX; s.dh = 0; cast(c, { t: "st", code: c, st: "n", hp: HP_MAX, dh: 0 }, false); } return [200, { ok: true }]; }
     if (s.st !== "n" || inLob(s)) return [200, { ok: true }]; const hp = Math.max(0, Math.min(HP_MAX, Math.round(num(b.hp))));
-    if (hp <= 0) { clearTimeout(s.tm); s.st = "x"; s.hp = 0; cast(c, { t: "st", code: c, st: "x", hp: 0, dh: 0 }, false); return [200, { ok: true }]; }
+    if (hp <= 0) { kill(c, { why: "fall" }); return [200, { ok: true }]; }
     s.hp = Math.min(hp, s.hp + 100); cast(c, { t: "hp", code: c, hp: s.hp }, false); return [200, { ok: true, hp: s.hp }];
   };
   mproutes["POST /api/mp/revive"] = async b => {
@@ -447,6 +559,51 @@ function createGame(ctx, env) {
     if (!s || !d || !p || d.p !== p.id || s.st !== "n" || Math.hypot(d.x - s.x, d.z - s.z) > 3.2 || Math.abs(d.y - s.y) > 2.5) return [200, { ok: false }];
     delete drops[String(b.id)]; cast(c, { t: "pick", id: String(b.id), by: c, items: d.items }, true); return [200, { ok: true }];
   };
+  /* ---------- Itens soltos no mapa (armas, kits médicos e poções) ----------
+     O servidor é a única fonte da verdade: cada item tem um id único; quem pega primeiro leva (a remoção é síncrona,
+     antes de qualquer resposta), o aviso vai para todo o grupo e repetir o mesmo envio nunca cria o item duas vezes. */
+  const gdrops = {}, gdSeen = new Map(), GD_TTL = 600000, GD_MAX = 150, GD_R = 4.6;
+  const WIDS = new Set(["p9", "mag", "mp", "ar", "tac", "lmg", "pump", "a12", "ar12", "snp"]);
+  const gdW = q => !q || typeof q !== "object" || !WIDS.has(q.d) ? null : { d: q.d, r: Math.max(0, Math.min(4, num(q.r) | 0)), at: Math.max(0, Math.min(2, num(q.at) | 0)), lt: Math.max(0, Math.min(2, num(q.lt) | 0)), mag: Math.max(0, Math.min(99, num(q.mag) | 0)) };
+  const gdPub = d => ({ id: d.id, k: d.k, w: d.w, x: d.x, y: d.y, z: d.z });
+  const gdCount = pid => { let n = 0; for (const id in gdrops) if (gdrops[id].p === pid) n++; return n; };
+  function gdRemove(id, tell) {
+    const d = gdrops[id]; if (!d) return false; clearTimeout(d.tm); delete gdrops[id];
+    if (tell) { const p = parties[d.p]; if (p) p.members.forEach(m => emit(m, { t: "gx", id })); }
+    return true;
+  }
+  function gdClear(pid) { for (const id of Object.keys(gdrops)) if (gdrops[id].p === pid) gdRemove(id, true); }
+  mproutes["POST /api/mp/gdrop"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), p = party(c);
+    if (!s || !p || !Array.isArray(b.items) || inLob(s) || (s.st !== "n" && s.st !== "x")) return [200, { ok: false, rej: [] }]; /* sem grupo/estado inválido: o cliente mantém o item só para ele */
+    const now = Date.now(); s.gdt = (s.gdt || []).filter(t => now - t < 5000);
+    const ids = [], rej = [];
+    for (const q of b.items.slice(0, 6)) {
+      const id = q && typeof q.id === "string" && /^[a-f0-9]{12}$/.test(q.id) ? q.id : ""; if (!id) continue;
+      const seen = gdSeen.get(id); if (seen) { (seen === c ? ids : rej).push(id); continue; } /* repetição do mesmo envio: não cria de novo, mesmo que já tenham pegado */
+      const k = q.k === "w" || q.k === "m" || q.k === "s" ? q.k : "", w = k === "w" ? gdW(q.w) : null;
+      if (!k || (k === "w" && !w) || s.gdt.length >= 14 || gdCount(p.id) >= GD_MAX) { rej.push(id); continue; }
+      s.gdt.push(now);
+      let x = num(q.x), z = num(q.z); if (Math.hypot(x - s.x, z - s.z) > 6) { x = s.x; z = s.z; }
+      const d = gdrops[id] = { id, p: p.id, k, w, x, y: s.y, z, by: c, tm: null };
+      d.tm = setTimeout(() => gdRemove(id, true), GD_TTL);
+      gdSeen.set(id, c); if (gdSeen.size > 3000) gdSeen.delete(gdSeen.keys().next().value);
+      ids.push(id);
+      cast(c, { t: "gd", id, k, w, x, y: s.y, z, ox: s.x, oz: s.z, by: c }, true);
+    }
+    return [200, { ok: true, ids, rej }];
+  };
+  mproutes["POST /api/mp/gpick"] = async b => {
+    const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const s = cs(c), p = party(c), id = String(b.id || "");
+    const d = gdrops[id];
+    if (!d || !p || d.p !== p.id) return [200, { ok: false, gone: 1 }]; /* já pegaram, sumiu ou não é do seu grupo */
+    if (!s || s.st !== "n" || inLob(s)) return [200, { ok: false }];
+    if (Math.hypot(d.x - s.x, d.z - s.z) > GD_R || Math.abs(d.y - s.y) > 6) return [200, { ok: false, far: 1 }];
+    gdRemove(id, false); /* sem await entre conferir e remover: dois pedidos ao mesmo tempo nunca levam o mesmo item */
+    cast(c, { t: "gp", id, by: c, k: d.k, w: d.w }, true);
+    return [200, { ok: true, id, k: d.k, w: d.w }];
+  };
+
   /* canal de eventos entre jogadores do grupo: armas na mão (w), tiros (s), recarga (rl) e construções (b+ bs b- bd) */
   const EV_OK = new Set(["w", "s", "rl", "b+", "bs", "b-", "bd"]);
   const BTYPES = ["wall", "ramp", "floor", "tri"];
@@ -476,7 +633,7 @@ function createGame(ctx, env) {
 
   mproutes["POST /api/mp/bsync"] = async b => { /* quem chega depois recebe as construções que já existem */
     const c = mpMe(b); if (!c) return [401, { error: "Sem conexão" }]; const p = party(c);
-    return [200, { ok: true, list: p && p.bl ? Object.values(p.bl) : [] }];
+    return [200, { ok: true, list: p && p.bl ? Object.values(p.bl) : [], gd: p ? Object.values(gdrops).filter(d => d.p === p.id).map(gdPub) : [] }];
   };
 
   Object.assign(routes, mproutes);
